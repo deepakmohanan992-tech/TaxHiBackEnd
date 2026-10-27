@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/TaxHi/">
+    <Project Path="src/TaxHi.Api/TaxHi.Api.csproj" />
+    <Project Path="src/TaxHi.Application/TaxHi.Application.csproj" />
+    <Project Path="src/TaxHi.Domain/TaxHi.Domain.csproj" />
+    <Project Path="src/TaxHi.Infrastructure/TaxHi.Infrastructure.csproj" />
+    <Project Path="tests/TaxHi.IntegrationTests/TaxHi.IntegrationTests.csproj" />
+    <Project Path="tests/TaxHi.UnitTests/TaxHi.UnitTests.csproj" />
+  </Folder>
+</Solution>
