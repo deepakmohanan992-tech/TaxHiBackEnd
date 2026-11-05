@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using TaxHi.Application.Exceptions;
 
 namespace TaxHi.Api.Middleware;
 
@@ -19,33 +18,6 @@ public sealed class ExceptionHandlingMiddleware
         try
         {
             await _next(context);
-        }
-        catch (ValidationException ex)
-        {
-            context.Response.StatusCode = StatusCodes.Status400BadRequest;
-            context.Response.ContentType = "application/problem+json";
-            var problem = new ValidationProblemDetails
-            {
-                Status = StatusCodes.Status400BadRequest,
-                Title = "Validation failed"
-            };
-            foreach (var kv in ex.Errors)
-            {
-                problem.Errors[kv.Key] = kv.Value;
-            }
-            await context.Response.WriteAsJsonAsync(problem);
-        }
-        catch (NotFoundException ex)
-        {
-            await WriteProblem(context, StatusCodes.Status404NotFound, "Not found", ex.Message);
-        }
-        catch (ConflictException ex)
-        {
-            await WriteProblem(context, StatusCodes.Status409Conflict, "Conflict", ex.Message);
-        }
-        catch (DomainException ex)
-        {
-            await WriteProblem(context, StatusCodes.Status400BadRequest, "Business rule violation", ex.Message);
         }
         catch (ArgumentException ex)
         {

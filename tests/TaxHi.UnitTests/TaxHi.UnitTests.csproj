@@ -18,9 +18,4 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\TaxHi.Domain\TaxHi.Domain.csproj" />
-    <ProjectReference Include="..\..\src\TaxHi.Application\TaxHi.Application.csproj" />
-  </ItemGroup>
-
 </Project>
