@@ -19,6 +19,10 @@ public sealed class ExceptionHandlingMiddleware
         {
             await _next(context);
         }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        {
+            _logger.LogDebug("Request {TraceIdentifier} was cancelled by the client.", context.TraceIdentifier);
+        }
         catch (ArgumentException ex)
         {
             await WriteProblem(context, StatusCodes.Status400BadRequest, "Bad request", ex.Message);
@@ -29,6 +33,12 @@ public sealed class ExceptionHandlingMiddleware
         }
         catch (Exception ex)
         {
+            if (context.RequestAborted.IsCancellationRequested)
+            {
+                _logger.LogDebug("Request {TraceIdentifier} was cancelled by the client.", context.TraceIdentifier);
+                return;
+            }
+
             _logger.LogError(ex, "Unhandled exception");
             await WriteProblem(context, StatusCodes.Status500InternalServerError, "Server error", "An unexpected error occurred.");
         }

@@ -8,6 +8,15 @@ builder.Services.AddControllers()
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHealthChecks();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Frontend", policy =>
+    {
+        policy.WithOrigins("http://localhost:5174")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
 builder.Services.AddTaxHiInfrastructure(builder.Configuration);
 
 var app = builder.Build();
@@ -18,6 +27,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseCors("Frontend");
 app.UseMiddleware<TaxHi.Api.Middleware.CorrelationIdMiddleware>();
 app.UseMiddleware<TaxHi.Api.Middleware.ExceptionHandlingMiddleware>();
 
