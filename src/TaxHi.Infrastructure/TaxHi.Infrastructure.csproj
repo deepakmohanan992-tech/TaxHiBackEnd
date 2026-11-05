@@ -11,10 +11,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.66" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TaxHi.Domain\TaxHi.Domain.csproj" />
     <ProjectReference Include="..\TaxHi.Application\TaxHi.Application.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <Folder Include="Database\StoredProcedures\" />
     <Folder Include="Persistence\" />
     <Folder Include="Services\" />
   </ItemGroup>
