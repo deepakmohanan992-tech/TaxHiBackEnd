@@ -4,15 +4,11 @@ namespace TaxHi.Application.Repositories;
 
 public interface ISearchRepository
 {
-    Task<IReadOnlyList<SelectedItems>> GetOutstationLocationsBySearchAsync(
-        string searchWord,
+    Task<PagedResult<SelectedItems>> GetOutstationLocationsBySearchAsync(
+        LocationSearchRequestDto request,
         CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<AvailableCabListing>> GetAvailableCabListingAsync(
-        int? vendorId,
-        DateOnly? fromDate,
-        DateOnly? toDate,
-        int? locationFrom,
-        int? locationTo,
+    Task<PagedResult<AvailableCabListing>> GetAvailableCabListingAsync(
+        AvailableCabListingRequestDto request,
         CancellationToken cancellationToken = default);
 }

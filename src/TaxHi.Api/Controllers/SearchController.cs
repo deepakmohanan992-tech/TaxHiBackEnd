@@ -8,40 +8,61 @@ namespace TaxHi.Api.Controllers;
 [Route("api/search")]
 public sealed class SearchController(ISearchRepository searchRepository) : ControllerBase
 {
-    [HttpGet("locations")]
-    public async Task<ActionResult<CommonResponse<IReadOnlyList<SelectedItems>>>> GetLocations(
-        [FromQuery] string searchWord,
+    [HttpPost("locations")]
+    public async Task<ActionResult<CommonResponse<PagedResult<SelectedItems>>>> GetLocations(
+        [FromBody] LocationSearchRequestDto request,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(searchWord))
+        if (string.IsNullOrWhiteSpace(request.Keyword))
         {
-            return BadRequest(new CommonResponse<IReadOnlyList<SelectedItems>>
+            return BadRequest(new CommonResponse<PagedResult<SelectedItems>>
             {
                 Success = false,
                 StatusCode = StatusCodes.Status400BadRequest,
-                Message = "searchWord is required.",
-                ErrorCode = "SEARCH_WORD_REQUIRED",
-                Data = []
+                Message = "Keyword is required.",
+                ErrorCode = "KEYWORD_REQUIRED"
+            });
+        }
+
+        if (request.CurrentPage < 1)
+        {
+            return BadRequest(new CommonResponse<PagedResult<SelectedItems>>
+            {
+                Success = false,
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = "CurrentPage must be greater than zero.",
+                ErrorCode = "INVALID_CURRENT_PAGE"
+            });
+        }
+
+        if (request.PageSize is < 1 or > 100)
+        {
+            return BadRequest(new CommonResponse<PagedResult<SelectedItems>>
+            {
+                Success = false,
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = "PageSize must be between 1 and 100.",
+                ErrorCode = "INVALID_PAGE_SIZE"
             });
         }
 
         var locations = await searchRepository.GetOutstationLocationsBySearchAsync(
-            searchWord.Trim(),
+            request,
             cancellationToken);
 
-        if (locations is null || locations.Count == 0)
+        if (locations.TotalItems == 0 || locations.Items.Count == 0)
         {
-            return NotFound(new CommonResponse<IReadOnlyList<SelectedItems>>
+            return NotFound(new CommonResponse<PagedResult<SelectedItems>>
             {
                 Success = false,
                 StatusCode = StatusCodes.Status404NotFound,
                 Message = "No locations found.",
                 ErrorCode = "LOCATIONS_NOT_FOUND",
-                Data = []
+                Data = locations
             });
         }
 
-        return Ok(new CommonResponse<IReadOnlyList<SelectedItems>>
+        return Ok(new CommonResponse<PagedResult<SelectedItems>>
         {
             Success = true,
             StatusCode = StatusCodes.Status200OK,
@@ -51,40 +72,52 @@ public sealed class SearchController(ISearchRepository searchRepository) : Contr
     }
 
     [HttpPost("availableCabListing")]
-    public async Task<ActionResult<CommonResponse<IReadOnlyList<AvailableCabListing>>>> GetAvailableCabListing(
-        [FromQuery] int? vendorId,
-        [FromQuery] DateOnly? fromDate,
-        [FromQuery] DateOnly? toDate,
-        [FromQuery] int? locationFrom,
-        [FromQuery] int? locationTo,
+    public async Task<ActionResult<CommonResponse<PagedResult<AvailableCabListing>>>> GetAvailableCabListing(
+        [FromBody] AvailableCabListingRequestDto request,
         CancellationToken cancellationToken)
     {
-        var listings = await searchRepository.GetAvailableCabListingAsync(
-            vendorId,
-                fromDate,
-                toDate,
-            locationFrom,
-            locationTo,
-            cancellationToken);
-
-            if (listings is null || listings.Count == 0)
+        if (request.CurrentPage < 1)
+        {
+            return BadRequest(new CommonResponse<PagedResult<AvailableCabListing>>
             {
-                return NotFound(new CommonResponse<IReadOnlyList<AvailableCabListing>>
-                {
-                    Success = false,
-                    StatusCode = StatusCodes.Status404NotFound,
-                    Message = "No available cab listings found.",
-                    ErrorCode = "AVAILABLE_CAB_LISTINGS_NOT_FOUND",
-                    Data = []
-                });
-            }
+                Success = false,
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = "CurrentPage must be greater than zero.",
+                ErrorCode = "INVALID_CURRENT_PAGE"
+            });
+        }
 
-        return Ok(new CommonResponse<IReadOnlyList<AvailableCabListing>>
+        if (request.PageSize is < 1 or > 100)
+        {
+            return BadRequest(new CommonResponse<PagedResult<AvailableCabListing>>
+            {
+                Success = false,
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = "PageSize must be between 1 and 100.",
+                ErrorCode = "INVALID_PAGE_SIZE"
+            });
+        }
+
+        var result = await searchRepository.GetAvailableCabListingAsync(request, cancellationToken);
+
+        if (result.TotalItems == 0 || result.Items.Count == 0)
+        {
+            return NotFound(new CommonResponse<PagedResult<AvailableCabListing>>
+            {
+                Success = false,
+                StatusCode = StatusCodes.Status404NotFound,
+                Message = "No vehicles available for the selected locations and dates.",
+                ErrorCode = "AVAILABLE_CAB_LISTINGS_NOT_FOUND",
+                Data = result
+            });
+        }
+
+        return Ok(new CommonResponse<PagedResult<AvailableCabListing>>
         {
             Success = true,
             StatusCode = StatusCodes.Status200OK,
             Message = "Available cab listings retrieved successfully.",
-            Data = listings
+            Data = result
         });
     }
 }
