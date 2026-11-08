@@ -1,5 +1,5 @@
 namespace TaxHi.Application.Models;
 
-public sealed class LocationSearchRequestDto : PaginationRequestDto
+public sealed class LocationSearchRequestDto : PaginationRequest
 {
 }

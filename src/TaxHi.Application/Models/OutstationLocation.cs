@@ -1,6 +1,6 @@
 namespace TaxHi.Application.Models;
 
-public sealed class OutstationLocationRow
+public sealed class OutstationLocation
 {
     public int CityId { get; init; }
     public string? LocationName { get; init; }

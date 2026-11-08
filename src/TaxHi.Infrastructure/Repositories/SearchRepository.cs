@@ -23,7 +23,7 @@ public sealed class SearchRepository(IDbConnection connection) : ISearchReposito
             commandType: CommandType.StoredProcedure,
             cancellationToken: cancellationToken);
 
-        var rows = await connection.QueryAsync<OutstationLocationRow>(command);
+        var rows = await connection.QueryAsync<OutstationLocation>(command);
         var locations = rows
             .Where(row => !string.IsNullOrWhiteSpace(row.LocationName))
             .Select(row => new SelectedItems
@@ -56,6 +56,9 @@ public sealed class SearchRepository(IDbConnection connection) : ISearchReposito
         parameters.Add("ToDate", request.ToDate?.ToDateTime(TimeOnly.MinValue), DbType.Date);
         parameters.Add("LocationFrom", request.LocationFrom, DbType.Int32);
         parameters.Add("LocationTo", request.LocationTo, DbType.Int32);
+        parameters.Add("VehicleType", request.VehicleType, DbType.Int32);
+        parameters.Add("Seats", request.Seats, DbType.Int32);
+        parameters.Add("Recommended", request.Recommended, DbType.Int32);
         parameters.Add("CurrentPage", request.CurrentPage, DbType.Int32);
         parameters.Add("PageSize", request.PageSize, DbType.Int32);
         parameters.Add("Keyword", keyword, DbType.String);

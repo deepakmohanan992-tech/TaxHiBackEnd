@@ -15,6 +15,7 @@ public static class DependencyInjection
             ?? throw new InvalidOperationException("Connection string 'DefaultConnection' was not found.");
 
         services.AddScoped<IDbConnection>(_ => new SqlConnection(connectionString));
+        services.AddScoped<ILookupRepository, LookupRepository>();
         services.AddScoped<ISearchRepository, SearchRepository>();
 
         return services;

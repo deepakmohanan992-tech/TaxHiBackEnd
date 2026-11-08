@@ -21,7 +21,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Database\StoredProcedures\" />
     <Folder Include="Persistence\" />
     <Folder Include="Services\" />
   </ItemGroup>
