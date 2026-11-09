@@ -22,7 +22,7 @@ public sealed class LookupController(ILookupRepository lookupRepository) : Contr
             return NotFound(new CommonResponse<IReadOnlyList<SelectedItems>>
             {
                 Success = false,
-                StatusCode = StatusCodes.Status404NotFound,
+                StatusCode = StatusCodes.Status200OK,
                 Message = "No vehicle types found.",
                 ErrorCode = "VEHICLE_TYPES_NOT_FOUND",
                 Data = vehicleTypes
@@ -49,7 +49,7 @@ public sealed class LookupController(ILookupRepository lookupRepository) : Contr
             return NotFound(new CommonResponse<IReadOnlyList<SelectedItems>>
             {
                 Success = false,
-                StatusCode = StatusCodes.Status404NotFound,
+                StatusCode = StatusCodes.Status200OK,
                 Message = "No seating capacity values found.",
                 ErrorCode = "SEATING_CAPACITY_NOT_FOUND",
                 Data = seatingCapacity

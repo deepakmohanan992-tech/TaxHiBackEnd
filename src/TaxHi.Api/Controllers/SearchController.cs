@@ -55,7 +55,7 @@ public sealed class SearchController(ISearchRepository searchRepository) : Contr
             return NotFound(new CommonResponse<PagedResult<SelectedItems>>
             {
                 Success = false,
-                StatusCode = StatusCodes.Status404NotFound,
+                StatusCode = StatusCodes.Status200OK,
                 Message = "No locations found.",
                 ErrorCode = "LOCATIONS_NOT_FOUND",
                 Data = locations
@@ -105,7 +105,7 @@ public sealed class SearchController(ISearchRepository searchRepository) : Contr
             return NotFound(new CommonResponse<PagedResult<AvailableCabListing>>
             {
                 Success = false,
-                StatusCode = StatusCodes.Status404NotFound,
+                StatusCode = StatusCodes.Status200OK,
                 Message = "No vehicles available for the selected locations and dates.",
                 ErrorCode = "AVAILABLE_CAB_LISTINGS_NOT_FOUND",
                 Data = result
