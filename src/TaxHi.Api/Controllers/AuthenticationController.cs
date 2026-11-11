@@ -50,6 +50,28 @@ public sealed class AuthenticationController(IAuthenticationService authenticati
         return Execute(authenticationService.GetSessionContextAsync(userId, cancellationToken));
     }
 
+    [Authorize]
+    [HttpGet("userDetails")]
+    public Task<ActionResult<CommonResponse<UserInfoDto>>> GetUserDetails([FromQuery] long? userId, [FromQuery] string? mobileNumber, CancellationToken cancellationToken)
+    {
+        var subject = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+            ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var authenticatedUserId = long.TryParse(subject, out var parsedUserId) ? parsedUserId : (long?)null;
+
+        return Execute(authenticationService.GetUserDetailsAsync(authenticatedUserId, userId, mobileNumber, cancellationToken));
+    }
+
+    [Authorize]
+    [HttpPut("updateAccountSettings")]
+    public Task<ActionResult<CommonResponse<UserInfoDto>>> UpdateAccountSettings([FromBody] UpdateAccountSettingsRequest request, CancellationToken cancellationToken)
+    {
+        var subject = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+            ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var userId = long.TryParse(subject, out var parsedUserId) ? parsedUserId : (long?)null;
+
+        return Execute(authenticationService.UpdateAccountSettingsAsync(userId, request, cancellationToken));
+    }
+
     [AllowAnonymous]
     [EnableRateLimiting("otp")]
     [HttpPost("sendGuestCancellationOTP")]

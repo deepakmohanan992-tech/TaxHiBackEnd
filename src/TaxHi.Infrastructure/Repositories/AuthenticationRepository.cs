@@ -48,6 +48,27 @@ public sealed class AuthenticationRepository(IDbConnection connection) : IAuthen
         return await connection.QuerySingleAsync<UserInfoDto>(command);
     }
 
+    public async Task<UserInfoDto?> UpdateUserAsync(long userId, string mobileNumber, string name, string? email, CancellationToken cancellationToken = default)
+    {
+        var command = new CommandDefinition(
+            "USP_RegisterOrGetUser",
+            new { MobileNumber = mobileNumber, UserId = userId, Name = name, Email = email },
+            commandType: CommandType.StoredProcedure,
+            cancellationToken: cancellationToken);
+        return await connection.QuerySingleOrDefaultAsync<UserInfoDto>(command);
+    }
+
+    public async Task<UserInfoDto?> GetAuthUserDetailsAsync(long? userId, string? mobileNumber, CancellationToken cancellationToken = default)
+    {
+        var command = new CommandDefinition(
+            "USP_GetAuthUserDetails",
+            new { UserId = userId, MobileNumber = mobileNumber },
+            commandType: CommandType.StoredProcedure,
+            commandTimeout: 60,
+            cancellationToken: cancellationToken);
+        return await connection.QuerySingleOrDefaultAsync<UserInfoDto>(command);
+    }
+
     public async Task<UserInfoDto?> GetUserByIdAsync(long userId, CancellationToken cancellationToken = default)
     {
         var command = new CommandDefinition(

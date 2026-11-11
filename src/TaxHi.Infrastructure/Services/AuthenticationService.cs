@@ -1,6 +1,8 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Net.Mail;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using TaxHi.Application.Models;
@@ -22,7 +24,7 @@ public sealed class AuthenticationService(
     public async Task<CommonResponse<object>> SendOtpAsync(SendOtpRequest request, CancellationToken cancellationToken = default)
     {
         if (!MobileNumberHelper.IsValidMobile(request.MobileNumber) || !string.Equals(request.Purpose?.Trim(), "Login", StringComparison.OrdinalIgnoreCase))
-            return ResponseFactory.Failure<object>(400, "A valid mobile number and purpose are required.", "INVALID_OTP_REQUEST");
+            return ResponseFactory.Failure<object>(StatusCodes.Status400BadRequest, "A valid mobile number and purpose are required.", "INVALID_OTP_REQUEST");
 
         var otp = OtpService.CreateNumericCode(6);
         var result = await repository.CreateOtpAsync(
@@ -31,7 +33,7 @@ public sealed class AuthenticationService(
             settings.OtpResendCooldownSeconds, cancellationToken);
 
         if (!result.Accepted)
-            return ResponseFactory.Failure<object>(429, "OTP resend is temporarily unavailable.", "OTP_RATE_LIMITED", result.RetryAfterSeconds);
+            return ResponseFactory.Failure<object>(StatusCodes.Status429TooManyRequests, "OTP resend is temporarily unavailable.", "OTP_RATE_LIMITED", result.RetryAfterSeconds);
 
         await otpNotifier.SendAsync(MobileNumberHelper.NormalizeMobile(request.MobileNumber), "Login", otp, cancellationToken);
         return ResponseFactory.Success<object>(new { ExpiresUtc = result.ExpiresUtc }, "OTP sent successfully.");
@@ -40,11 +42,11 @@ public sealed class AuthenticationService(
     public async Task<CommonResponse<TokenResponseDto>> VerifyOtpAsync(VerifyOtpRequest request, CancellationToken cancellationToken = default)
     {
         if (!MobileNumberHelper.IsValidMobile(request.MobileNumber) || !string.Equals(request.Purpose?.Trim(), "Login", StringComparison.OrdinalIgnoreCase) || request.Otp.Length != 6 || !request.Otp.All(char.IsDigit))
-            return ResponseFactory.Failure<TokenResponseDto>(400, "A valid mobile number and OTP are required.", "INVALID_OTP_REQUEST");
+            return ResponseFactory.Failure<TokenResponseDto>(StatusCodes.Status400BadRequest, "A valid mobile number and OTP are required.", "INVALID_OTP_REQUEST");
 
         var verification = await repository.VerifyOtpAsync(MobileNumberHelper.NormalizeMobile(request.MobileNumber), "Login", TokenHelper.Hash(request.Otp, settings.JwtSigningKey), cancellationToken);
         if (!verification.Success)
-            return ResponseFactory.Failure<TokenResponseDto>(401, "The OTP is invalid, expired, or has exceeded the maximum attempts.", verification.FailureCode);
+            return ResponseFactory.Failure<TokenResponseDto>(StatusCodes.Status401Unauthorized, "The OTP is invalid, expired, or has exceeded the maximum attempts.", verification.FailureCode);
 
         var user = await repository.RegisterOrGetUserAsync(MobileNumberHelper.NormalizeMobile(request.MobileNumber), cancellationToken);
         return ResponseFactory.Success(await IssueTokensAsync(user, cancellationToken), "Authentication successful.");
@@ -68,15 +70,57 @@ public sealed class AuthenticationService(
         }, "Session context retrieved successfully.");
     }
 
+    public async Task<CommonResponse<UserInfoDto>> GetUserDetailsAsync(long? authenticatedUserId, long? userId, string? mobileNumber, CancellationToken cancellationToken = default)
+    {
+        if (authenticatedUserId is null or <= 0)
+            return ResponseFactory.Failure<UserInfoDto>(401, "Authentication is required.", "UNAUTHORIZED");
+
+        var hasMobile = !string.IsNullOrWhiteSpace(mobileNumber);
+        if (userId <= 0 || (hasMobile && !MobileNumberHelper.IsValidMobile(mobileNumber!)))
+            return ResponseFactory.Failure<UserInfoDto>(StatusCodes.Status400BadRequest, "A valid userId or mobileNumber is required.", "INVALID_USER_DETAILS_REQUEST");
+
+        var lookupUserId = userId ?? (hasMobile ? null : authenticatedUserId);
+        var user = await repository.GetAuthUserDetailsAsync(lookupUserId, hasMobile ? MobileNumberHelper.NormalizeMobile(mobileNumber!) : null, cancellationToken);
+
+        // Callers may only read their own record; other users' records are reported as not found.
+        if (user is null || user.UserId != authenticatedUserId)
+            return ResponseFactory.Failure<UserInfoDto>(StatusCodes.Status404NotFound, "User was not found.", "USER_NOT_FOUND");
+
+        return ResponseFactory.Success(user, "User details retrieved successfully.");
+    }
+
+    public async Task<CommonResponse<UserInfoDto>> UpdateAccountSettingsAsync(long? authenticatedUserId, UpdateAccountSettingsRequest request, CancellationToken cancellationToken = default)
+    {
+        var name = request.Name?.Trim();
+        var email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim();
+
+        if (request.Id <= 0 || string.IsNullOrWhiteSpace(name) || name.Length > 200
+            || !MobileNumberHelper.IsValidMobile(request.PhoneNumber)
+            || (email is not null && (email.Length > 320 || !MailAddress.TryCreate(email, out _))))
+            return ResponseFactory.Failure<UserInfoDto>(StatusCodes.Status400BadRequest, "A valid Id, Name, PhoneNumber and (optional) Email are required.", "INVALID_ACCOUNT_SETTINGS_REQUEST");
+
+        if (authenticatedUserId != request.Id)
+            return ResponseFactory.Failure<UserInfoDto>(StatusCodes.Status403Forbidden, "You can only update your own account.", "ACCOUNT_ACCESS_DENIED");
+
+        if (await repository.GetUserByIdAsync(request.Id, cancellationToken) is null)
+            return ResponseFactory.Failure<UserInfoDto>(StatusCodes.Status404NotFound, "User was not found.", "USER_NOT_FOUND");
+
+        var user = await repository.UpdateUserAsync(request.Id, MobileNumberHelper.NormalizeMobile(request.PhoneNumber), name, email, cancellationToken);
+        if (user is null)
+            return ResponseFactory.Failure<UserInfoDto>(StatusCodes.Status409Conflict, "The phone number is already in use by another account.", "PHONE_NUMBER_IN_USE");
+
+        return ResponseFactory.Success(user, "Account settings updated successfully.");
+    }
+
     public async Task<CommonResponse<TokenResponseDto>> RefreshTokenAsync(RefreshTokenRequest request, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.RefreshToken))
-            return ResponseFactory.Failure<TokenResponseDto>(400, "Refresh token is required.", "REFRESH_TOKEN_REQUIRED");
+            return ResponseFactory.Failure<TokenResponseDto>(StatusCodes.Status400BadRequest, "Refresh token is required.", "REFRESH_TOKEN_REQUIRED");
 
         var tokenHash = TokenHelper.Hash(request.RefreshToken, settings.JwtSigningKey);
         var user = await repository.ValidateRefreshTokenAsync(tokenHash, cancellationToken);
         if (user is null)
-            return ResponseFactory.Failure<TokenResponseDto>(401, "Refresh token is invalid or expired.", "INVALID_REFRESH_TOKEN");
+            return ResponseFactory.Failure<TokenResponseDto>(StatusCodes.Status401Unauthorized, "Refresh token is invalid or expired.", "INVALID_REFRESH_TOKEN");
 
         await repository.RevokeRefreshTokenAsync(tokenHash, cancellationToken);
         return ResponseFactory.Success(await IssueTokensAsync(new UserInfoDto
@@ -88,16 +132,16 @@ public sealed class AuthenticationService(
     public async Task<CommonResponse<object>> LogoutAsync(RevokeTokenRequest request, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.RefreshToken))
-            return ResponseFactory.Failure<object>(400, "Refresh token is required.", "REFRESH_TOKEN_REQUIRED");
+            return ResponseFactory.Failure<object>(StatusCodes.Status400BadRequest, "Refresh token is required.", "REFRESH_TOKEN_REQUIRED");
 
         var tokenHash = TokenHelper.Hash(request.RefreshToken, settings.JwtSigningKey);
         var status = await repository.GetRefreshTokenStatusAsync(tokenHash, cancellationToken);
         if (status is null)
-            return ResponseFactory.Failure<object>(401, "Refresh token was not found.", "INVALID_REFRESH_TOKEN");
+            return ResponseFactory.Failure<object>(StatusCodes.Status401Unauthorized, "Refresh token was not found.", "INVALID_REFRESH_TOKEN");
         if (status.IsRevoked)
-            return ResponseFactory.Failure<object>(401, "Refresh token has already been revoked.", "REFRESH_TOKEN_REVOKED");
+            return ResponseFactory.Failure<object>(StatusCodes.Status401Unauthorized, "Refresh token has already been revoked.", "REFRESH_TOKEN_REVOKED");
         if (status.IsExpired)
-            return ResponseFactory.Failure<object>(401, "Refresh token has expired.", "REFRESH_TOKEN_EXPIRED");
+            return ResponseFactory.Failure<object>(StatusCodes.Status401Unauthorized, "Refresh token has expired.", "REFRESH_TOKEN_EXPIRED");
 
         await repository.RevokeRefreshTokenAsync(tokenHash, cancellationToken);
         return ResponseFactory.Success<object>(null, "Logged out successfully.");
@@ -106,7 +150,7 @@ public sealed class AuthenticationService(
     public async Task<CommonResponse<object>> RevokeTokenAsync(RevokeTokenRequest request, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.RefreshToken))
-            return ResponseFactory.Failure<object>(400, "Refresh token is required.", "REFRESH_TOKEN_REQUIRED");
+            return ResponseFactory.Failure<object>(StatusCodes.Status400BadRequest, "Refresh token is required.", "REFRESH_TOKEN_REQUIRED");
 
         await repository.RevokeRefreshTokenAsync(TokenHelper.Hash(request.RefreshToken, settings.JwtSigningKey), cancellationToken);
         return ResponseFactory.Success<object>(null, "Token revoked successfully.");
@@ -115,13 +159,13 @@ public sealed class AuthenticationService(
     public async Task<CommonResponse<object>> SendGuestCancellationOtpAsync(GuestCancellationOtpRequest request, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.BookingReference) || !MobileNumberHelper.IsValidMobile(request.MobileNumber))
-            return ResponseFactory.Failure<object>(400, "Booking reference and a valid mobile number are required.", "INVALID_GUEST_REQUEST");
+            return ResponseFactory.Failure<object>(StatusCodes.Status400BadRequest, "Booking reference and a valid mobile number are required.", "INVALID_GUEST_REQUEST");
 
         var booking = await repository.GetGuestBookingAsync(request.BookingReference.Trim(), MobileNumberHelper.NormalizeMobile(request.MobileNumber), cancellationToken);
         if (booking is null)
-            return ResponseFactory.Failure<object>(404, "Booking was not found.", "BOOKING_NOT_FOUND");
+            return ResponseFactory.Failure<object>(StatusCodes.Status404NotFound, "Booking was not found.", "BOOKING_NOT_FOUND");
         if (booking.Status is "Cancelled" or "Completed")
-            return ResponseFactory.Failure<object>(409, "This booking cannot be cancelled.", "BOOKING_NOT_CANCELLABLE");
+            return ResponseFactory.Failure<object>(StatusCodes.Status409Conflict, "This booking cannot be cancelled.", "BOOKING_NOT_CANCELLABLE");
 
         var otp = OtpService.CreateNumericCode(6);
         var purpose = AuthConstants.GuestPurpose(request.BookingReference);
@@ -129,7 +173,7 @@ public sealed class AuthenticationService(
             DateTime.UtcNow.AddMinutes(settings.OtpExpiryMinutes), settings.OtpMaxAttempts,
             settings.OtpResendCooldownSeconds, cancellationToken);
         if (!result.Accepted)
-            return ResponseFactory.Failure<object>(429, "OTP resend is temporarily unavailable.", "OTP_RATE_LIMITED", result.RetryAfterSeconds);
+            return ResponseFactory.Failure<object>(StatusCodes.Status429TooManyRequests, "OTP resend is temporarily unavailable.", "OTP_RATE_LIMITED", result.RetryAfterSeconds);
 
         await otpNotifier.SendAsync(MobileNumberHelper.NormalizeMobile(request.MobileNumber), purpose, otp, cancellationToken);
         return ResponseFactory.Success<object>(new { ExpiresUtc = result.ExpiresUtc }, "Cancellation OTP sent successfully.");
@@ -138,7 +182,7 @@ public sealed class AuthenticationService(
     public async Task<CommonResponse<object>> VerifyGuestCancellationOtpAsync(VerifyGuestCancellationOtpRequest request, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.BookingReference) || !MobileNumberHelper.IsValidMobile(request.MobileNumber) || request.Otp.Length != 6 || !request.Otp.All(char.IsDigit))
-            return ResponseFactory.Failure<object>(400, "Booking reference, mobile number, and OTP are required.", "INVALID_GUEST_REQUEST");
+            return ResponseFactory.Failure<object>(StatusCodes.Status400BadRequest, "Booking reference, mobile number, and OTP are required.", "INVALID_GUEST_REQUEST");
 
         var cancellation = await repository.CancelGuestBookingWithOtpAsync(
             request.BookingReference.Trim(),
@@ -163,15 +207,15 @@ public sealed class AuthenticationService(
     public async Task<CommonResponse<GuestBookingAccessDto>> ValidateGuestBookingAccessAsync(ValidateGuestBookingAccessRequest request, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.BookingReference) || string.IsNullOrWhiteSpace(request.AccessToken))
-            return ResponseFactory.Failure<GuestBookingAccessDto>(400, "Booking reference and access token are required.", "INVALID_GUEST_ACCESS_REQUEST");
+            return ResponseFactory.Failure<GuestBookingAccessDto>(StatusCodes.Status400BadRequest, "Booking reference and access token are required.", "INVALID_GUEST_ACCESS_REQUEST");
 
         var valid = await repository.ValidateBookingAccessTokenAsync(request.BookingReference.Trim(), TokenHelper.Hash(request.AccessToken, settings.JwtSigningKey), cancellationToken);
         if (!valid)
-            return ResponseFactory.Failure<GuestBookingAccessDto>(401, "Booking access token is invalid or expired.", "INVALID_BOOKING_ACCESS_TOKEN");
+            return ResponseFactory.Failure<GuestBookingAccessDto>(StatusCodes.Status401Unauthorized, "Booking access token is invalid or expired.", "INVALID_BOOKING_ACCESS_TOKEN");
 
         var booking = await repository.GetGuestBookingAsync(request.BookingReference.Trim(), string.Empty, cancellationToken);
         if (booking is null)
-            return ResponseFactory.Failure<GuestBookingAccessDto>(404, "Booking was not found.", "BOOKING_NOT_FOUND");
+            return ResponseFactory.Failure<GuestBookingAccessDto>(StatusCodes.Status404NotFound, "Booking was not found.", "BOOKING_NOT_FOUND");
 
         return ResponseFactory.Success(new GuestBookingAccessDto { BookingReference = booking.BookingReference, BookingDateUtc = booking.BookingDateUtc, Status = booking.Status }, "Booking access validated.");
     }

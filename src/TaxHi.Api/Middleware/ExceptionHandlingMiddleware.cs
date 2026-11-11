@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 
 namespace TaxHi.Api.Middleware;
 
@@ -22,6 +23,12 @@ public sealed class ExceptionHandlingMiddleware
         catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
         {
             _logger.LogDebug("Request {TraceIdentifier} was cancelled by the client.", context.TraceIdentifier);
+            context.Response.StatusCode = 499; // Client Closed Request
+        }
+        catch (SqlException ex) when (IsSqlCancellation(ex, context))
+        {
+            _logger.LogDebug("SQL operation for request {TraceIdentifier} was cancelled by the client.", context.TraceIdentifier);
+            context.Response.StatusCode = 499; // Client Closed Request
         }
         catch (ArgumentException ex)
         {
@@ -36,12 +43,19 @@ public sealed class ExceptionHandlingMiddleware
             if (context.RequestAborted.IsCancellationRequested)
             {
                 _logger.LogDebug("Request {TraceIdentifier} was cancelled by the client.", context.TraceIdentifier);
+                context.Response.StatusCode = 499;
                 return;
             }
 
             _logger.LogError(ex, "Unhandled exception");
             await WriteProblem(context, StatusCodes.Status500InternalServerError, "Server error", "An unexpected error occurred.");
         }
+    }
+
+    private static bool IsSqlCancellation(SqlException ex, HttpContext context)
+    {
+        return context.RequestAborted.IsCancellationRequested ||
+               ex.Message.Contains("Operation cancelled by user", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task WriteProblem(HttpContext context, int status, string title, string detail)

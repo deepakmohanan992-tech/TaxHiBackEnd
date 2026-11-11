@@ -8,6 +8,8 @@ public interface IAuthenticationService
     Task<CommonResponse<object>> SendOtpAsync(SendOtpRequest request, CancellationToken cancellationToken = default);
     Task<CommonResponse<TokenResponseDto>> VerifyOtpAsync(VerifyOtpRequest request, CancellationToken cancellationToken = default);
     Task<CommonResponse<SessionContextResponse>> GetSessionContextAsync(long? userId, CancellationToken cancellationToken = default);
+    Task<CommonResponse<UserInfoDto>> GetUserDetailsAsync(long? authenticatedUserId, long? userId, string? mobileNumber, CancellationToken cancellationToken = default);
+    Task<CommonResponse<UserInfoDto>> UpdateAccountSettingsAsync(long? authenticatedUserId, UpdateAccountSettingsRequest request, CancellationToken cancellationToken = default);
     Task<CommonResponse<TokenResponseDto>> RefreshTokenAsync(RefreshTokenRequest request, CancellationToken cancellationToken = default);
     Task<CommonResponse<object>> LogoutAsync(RevokeTokenRequest request, CancellationToken cancellationToken = default);
     Task<CommonResponse<object>> RevokeTokenAsync(RevokeTokenRequest request, CancellationToken cancellationToken = default);

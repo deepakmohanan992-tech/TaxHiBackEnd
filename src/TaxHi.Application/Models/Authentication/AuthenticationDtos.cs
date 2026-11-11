@@ -54,6 +54,14 @@ public sealed class UserInfoDto
     public string? Email { get; init; }
 }
 
+public sealed class UpdateAccountSettingsRequest
+{
+    public long Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Email { get; set; }
+    public string PhoneNumber { get; set; } = string.Empty;
+}
+
 public sealed class SessionContextResponse
 {
     public string UserType { get; init; } = "Anonymous";

@@ -7,6 +7,8 @@ public interface IAuthenticationRepository
     Task<OtpCreateResult> CreateOtpAsync(string mobileNumber, string purpose, string otpHash, DateTime expiresUtc, int maxAttempts, int cooldownSeconds, CancellationToken cancellationToken = default);
     Task<OtpVerificationResult> VerifyOtpAsync(string mobileNumber, string purpose, string otpHash, CancellationToken cancellationToken = default);
     Task<UserInfoDto> RegisterOrGetUserAsync(string mobileNumber, CancellationToken cancellationToken = default);
+    Task<UserInfoDto?> UpdateUserAsync(long userId, string mobileNumber, string name, string? email, CancellationToken cancellationToken = default);
+    Task<UserInfoDto?> GetAuthUserDetailsAsync(long? userId, string? mobileNumber, CancellationToken cancellationToken = default);
     Task<UserInfoDto?> GetUserByIdAsync(long userId, CancellationToken cancellationToken = default);
     Task SaveRefreshTokenAsync(long userId, string tokenHash, DateTime expiresUtc, CancellationToken cancellationToken = default);
     Task<RefreshTokenRecord?> ValidateRefreshTokenAsync(string tokenHash, CancellationToken cancellationToken = default);
