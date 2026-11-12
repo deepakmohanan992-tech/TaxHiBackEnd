@@ -4,7 +4,6 @@ public sealed class AvailableCabListing
 {
     public string? VehicleName { get; init; }
     public string? FuelType { get; init; }
-    public string? SimilarVehicleNames { get; init; }
     public string? VehicleImageURL { get; init; }
     public string? VehicleDescription { get; init; }
     public decimal? DiscountPercentage { get; init; }
@@ -16,4 +15,5 @@ public sealed class AvailableCabListing
     public decimal? PostLimitChargePerKM { get; init; }
     public string? Inclusions { get; init; }
     public string? AvailabilityStatus { get; init; }
+    public string? AvailableFrom { get; set; }
 }

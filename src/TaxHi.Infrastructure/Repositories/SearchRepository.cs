@@ -2,6 +2,8 @@ using System.Data;
 using Dapper;
 using TaxHi.Application.Models;
 using TaxHi.Application.Repositories;
+using TaxHi.Infrastructure.Models;
+using static TaxHi.Infrastructure.Helpers.SearchHelper;
 
 namespace TaxHi.Infrastructure.Repositories;
 
@@ -23,7 +25,9 @@ public sealed class SearchRepository(IDbConnection connection) : ISearchReposito
             commandType: CommandType.StoredProcedure,
             cancellationToken: cancellationToken);
 
-        var rows = await connection.QueryAsync<OutstationLocation>(command);
+        using var resultSets = await connection.QueryMultipleAsync(command);
+        var rows = await resultSets.ReadAsync<OutstationLocation>();
+        var pagination = await resultSets.ReadSingleOrDefaultAsync<PaginationMetadata>();
         var locations = rows
             .Where(row => !string.IsNullOrWhiteSpace(row.LocationName))
             .Select(row => new SelectedItems
@@ -37,10 +41,10 @@ public sealed class SearchRepository(IDbConnection connection) : ISearchReposito
         return new PagedResult<SelectedItems>
         {
             Items = locations,
-            CurrentPage = request.CurrentPage,
-            PageSize = request.PageSize,
-            TotalItems = locations.Count,
-            TotalPages = locations.Count == 0 ? 0 : 1,
+            CurrentPage = pagination?.CurrentPage ?? request.CurrentPage,
+            PageSize = pagination?.PageSize ?? request.PageSize,
+            TotalItems = pagination?.TotalRecords ?? locations.Count,
+            TotalPages = pagination?.TotalPages ?? (locations.Count == 0 ? 0 : 1),
             Keyword = keyword
         };
     }
@@ -56,7 +60,7 @@ public sealed class SearchRepository(IDbConnection connection) : ISearchReposito
         parameters.Add("ToDate", request.ToDate?.ToDateTime(TimeOnly.MinValue), DbType.Date);
         parameters.Add("LocationFrom", request.LocationFrom, DbType.Int32);
         parameters.Add("LocationTo", request.LocationTo, DbType.Int32);
-        parameters.Add("VehicleType", request.VehicleType, DbType.Int32);
+        parameters.Add("VehicleType", ToCsv(request.VehicleType), DbType.String);
         parameters.Add("Seats", request.Seats, DbType.Int32);
         parameters.Add("Recommended", request.Recommended, DbType.Int32);
         parameters.Add("CurrentPage", request.CurrentPage, DbType.Int32);
@@ -69,19 +73,19 @@ public sealed class SearchRepository(IDbConnection connection) : ISearchReposito
             commandType: CommandType.StoredProcedure,
             cancellationToken: cancellationToken);
 
-        var rows = (await connection.QueryAsync<AvailableCabListing>(command)).AsList();
+        using var resultSets = await connection.QueryMultipleAsync(command);
+        var rows = (await resultSets.ReadAsync<AvailableCabListing>()).AsList();
+        var pagination = await resultSets.ReadSingleOrDefaultAsync<PaginationMetadata>();
 
         return new PagedResult<AvailableCabListing>
         {
             Items = rows,
-            CurrentPage = request.CurrentPage,
-            PageSize = request.PageSize,
-            TotalItems = rows.Count,
-            TotalPages = rows.Count == 0 ? 0 : 1,
+            CurrentPage = pagination?.CurrentPage ?? request.CurrentPage,
+            PageSize = pagination?.PageSize ?? request.PageSize,
+            TotalItems = pagination?.TotalRecords ?? rows.Count,
+            TotalPages = pagination?.TotalPages ?? (rows.Count == 0 ? 0 : 1),
             Keyword = keyword
         };
     }
 
-    private static string? NormalizeKeyword(string? keyword) =>
-        string.IsNullOrWhiteSpace(keyword) ? null : keyword.Trim();
 }
