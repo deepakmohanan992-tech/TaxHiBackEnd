@@ -2,7 +2,12 @@ namespace TaxHi.Application.Models;
 
 public sealed class AvailableCabListing
 {
+    public int? VendorId { get; set; }
+    public int? VehicleId { get; set; }
     public string? VehicleName { get; init; }
+    public int? VehicleDetailsId { get; set; }
+    public int? VehicleCategoryId { get; set; }
+    public int? VehicleBrandId { get; set; }
     public string? FuelType { get; init; }
     public string? VehicleImageURL { get; init; }
     public string? VehicleDescription { get; init; }

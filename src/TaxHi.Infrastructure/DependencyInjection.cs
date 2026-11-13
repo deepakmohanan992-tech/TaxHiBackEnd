@@ -21,6 +21,13 @@ public static class DependencyInjection
         services.AddScoped<ISearchRepository, SearchRepository>();
         services.AddScoped<IAuthenticationRepository, AuthenticationRepository>();
         services.AddScoped<IAuthenticationService, AuthenticationService>();
+        services.AddOptions<BookingOptions>()
+            .Bind(configuration.GetSection("Booking"))
+            .Validate(o => o.HoldDurationMinutes is > 0 and <= 1440, "Booking:HoldDurationMinutes must be between 1 and 1440.")
+            .Validate(o => o.LockTimeoutMilliseconds is >= 0 and <= 120000, "Booking:LockTimeoutMilliseconds must be between 0 and 120000.")
+            .ValidateOnStart();
+        services.AddScoped<IBookingRepository, BookingRepository>();
+        services.AddScoped<IBookingService, BookingService>();
         services.AddSingleton<IOtpNotifier, NullOtpNotifier>();
         services.AddOptions<AuthenticationOptions>()
             .Bind(configuration.GetSection("Authentication"))
