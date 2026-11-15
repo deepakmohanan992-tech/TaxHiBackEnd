@@ -41,7 +41,7 @@ public sealed partial class BookingService(
         }
         catch (SqlException ex) when (ex.Number == 50003)
         {
-            return ResponseFactory.Failure<SaveBookingPaymentResponse>(StatusCodes.Status409Conflict,
+            return ResponseFactory.Failure<SaveBookingPaymentResponse>(StatusCodes.Status400BadRequest,
                 "This vehicle has already been reserved for the selected date and time. Please select another vehicle or date.",
                 "VEHICLE_ALREADY_RESERVED");
         }
