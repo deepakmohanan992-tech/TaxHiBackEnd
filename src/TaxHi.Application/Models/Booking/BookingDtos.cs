@@ -60,6 +60,7 @@ public sealed class BookingAddOnDto
 public sealed class SaveBookingPaymentResponse
 {
     public long BookingId { get; set; }
+    public string? BookingNo { get; set; }
     public long BookingPaymentId { get; set; }
     public string BookingStatus { get; set; } = "Pending";
     public string PaymentStatus { get; set; } = "Pending";

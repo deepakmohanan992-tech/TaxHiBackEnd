@@ -10,6 +10,7 @@ using TaxHi.Application.Repositories;
 using TaxHi.Application.Services;
 using TaxHi.Infrastructure.Common;
 using TaxHi.Infrastructure.Helpers;
+using TaxHi.Infrastructure.Repositories;
 
 namespace TaxHi.Infrastructure.Services;
 
@@ -33,7 +34,7 @@ public sealed partial class BookingService(
 
         try
         {
-            var saved = await repository.SaveBookingPaymentAsync(request, amounts!, cancellationToken);
+            var saved = await repository.SaveBookingPaymentAsync(request, amounts!, BookingRepository.GenerateBookingNo(), cancellationToken);
             return ResponseFactory.Success(saved, saved.IsDuplicateRequest
                 ? "This booking request was already processed. Returning the existing booking."
                 : "Booking saved successfully. Payment is pending.");

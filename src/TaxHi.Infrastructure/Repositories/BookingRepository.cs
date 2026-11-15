@@ -12,10 +12,12 @@ namespace TaxHi.Infrastructure.Repositories;
 public sealed class BookingRepository(IDbConnection connection, IOptions<BookingOptions> options) : IBookingRepository
 {
     private const int MaxDeadlockAttempts = 3;
+    private const int MaxBookingNoAttempts = 5;
 
     public async Task<SaveBookingPaymentResponse> SaveBookingPaymentAsync(
         SaveBookingPaymentRequest request,
         BookingAmounts amounts,
+        string bookingNo,
         CancellationToken cancellationToken = default)
     {
         var addOns = request.AddOns is { Count: > 0 }
@@ -62,6 +64,7 @@ public sealed class BookingRepository(IDbConnection connection, IOptions<Booking
         parameters.Add("TotalFare", amounts.TotalFare, DbType.Decimal);
         parameters.Add("PayableNowAmount", amounts.PayableNowAmount, DbType.Decimal);
         parameters.Add("BalancePayableAmount", amounts.BalancePayableAmount, DbType.Decimal);
+        parameters.Add("BookingNo", bookingNo, DbType.String);
         parameters.Add("AddOns", addOns, DbType.Xml);
         parameters.Add("HoldMinutes", options.Value.HoldDurationMinutes, DbType.Int32);
         parameters.Add("LockTimeoutMs", options.Value.LockTimeoutMilliseconds, DbType.Int32);
@@ -85,6 +88,17 @@ public sealed class BookingRepository(IDbConnection connection, IOptions<Booking
             {
                 await Task.Delay(Random.Shared.Next(20, 80) * attempt, cancellationToken);
             }
+            // Duplicate BookingNo (unique index violation): the insert was rolled back, so retry with a new number.
+            catch (SqlException ex) when ((ex.Number is 2601 or 2627)
+                                          && ex.Message.Contains("BookingNo", StringComparison.OrdinalIgnoreCase)
+                                          && attempt < MaxBookingNoAttempts)
+            {
+                parameters.Add("BookingNo", GenerateBookingNo(), DbType.String);
+            }
         }
     }
+
+    // Format: M{MM}{yy}-{8 random digits}, e.g. M1126-13334779
+    public static string GenerateBookingNo() =>
+        $"M{DateTime.Now:MM}{DateTime.Now:yy}-{Random.Shared.Next(10000000, 99999999)}";
 }
