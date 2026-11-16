@@ -4,18 +4,19 @@ using Microsoft.AspNetCore.Mvc;
 using TaxHi.Application.Enums;
 using TaxHi.Application.Models;
 using TaxHi.Application.Repositories;
+using TaxHi.Application.Services;
 
 namespace TaxHi.Api.Controllers;
 
 [ApiController]
 [Route("api/lookup")]
-public sealed class LookupController(ILookupRepository lookupRepository) : ControllerBase
+public sealed class LookupController(ILookupRepository lookupRepository, IUserContext userContext) : ControllerBase
 {
     [HttpGet("vehicleTypes")]
     public async Task<ActionResult<CommonResponse<IReadOnlyList<SelectedItems>>>> GetVehicleTypes(
         CancellationToken cancellationToken)
     {
-        var vehicleTypes = await lookupRepository.GetVehicleTypesAsync(cancellationToken);
+        var vehicleTypes = await lookupRepository.GetVehicleTypesAsync(userContext.VendorId, cancellationToken);
 
         if (vehicleTypes.Count == 0)
         {
@@ -42,7 +43,7 @@ public sealed class LookupController(ILookupRepository lookupRepository) : Contr
     public async Task<ActionResult<CommonResponse<IReadOnlyList<SelectedItems>>>> GetSeatingCapacity(
         CancellationToken cancellationToken)
     {
-        var seatingCapacity = await lookupRepository.GetSeatingCapacityAsync(cancellationToken);
+        var seatingCapacity = await lookupRepository.GetSeatingCapacityAsync(userContext.VendorId, cancellationToken);
 
         if (seatingCapacity.Count == 0)
         {

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxHi.Application.Models;
@@ -11,13 +12,27 @@ namespace TaxHi.Api.Controllers;
 public sealed class BookingController(IBookingService bookingService) : ControllerBase
 {
     // Guests can check out, matching the guest-booking flow in AuthenticationController.
-    [AllowAnonymous]
+    [Authorize]
     [HttpPost("SaveBookingPayment")]
     public async Task<ActionResult<CommonResponse<SaveBookingPaymentResponse>>> SaveBookingPayment(
         [FromBody] SaveBookingPaymentRequest request,
         CancellationToken cancellationToken)
     {
-        var response = await bookingService.SaveBookingPaymentAsync(request, cancellationToken);
+        int userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+        var response = await bookingService.SaveBookingPaymentAsync(request, userId, cancellationToken);
+        return new ObjectResult(response) { StatusCode = response.StatusCode };
+    }
+
+    // Returns the signed-in user's own upcoming bookings, matched on the mobile number in their token.
+    [Authorize]
+    [HttpGet("UpcomingBookings")]
+    public async Task<ActionResult<CommonResponse<PagedResult<UpcomingBookingDto>>>> GetUpcomingBookings(
+        [FromQuery] int currentPage = 1,
+        [FromQuery] int pageSize = 10,
+        CancellationToken cancellationToken = default)
+    {
+        var mobileNumber = User.FindFirst(ClaimTypes.MobilePhone)?.Value;
+        var response = await bookingService.GetUpcomingBookingsAsync(mobileNumber, currentPage, pageSize, cancellationToken);
         return new ObjectResult(response) { StatusCode = response.StatusCode };
     }
 }

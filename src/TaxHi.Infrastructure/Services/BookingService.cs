@@ -25,7 +25,7 @@ public sealed partial class BookingService(
     private static partial Regex GstinPattern();
 
     public async Task<CommonResponse<SaveBookingPaymentResponse>> SaveBookingPaymentAsync(
-        SaveBookingPaymentRequest request,
+        SaveBookingPaymentRequest request, int userId,
         CancellationToken cancellationToken = default)
     {
         var error = Validate(request, out var amounts);
@@ -34,7 +34,7 @@ public sealed partial class BookingService(
 
         try
         {
-            var saved = await repository.SaveBookingPaymentAsync(request, amounts!, BookingRepository.GenerateBookingNo(), cancellationToken);
+            var saved = await repository.SaveBookingPaymentAsync(request, userId, amounts!, BookingRepository.GenerateBookingNo(), cancellationToken);
             return ResponseFactory.Success(saved, saved.IsDuplicateRequest
                 ? "This booking request was already processed. Returning the existing booking."
                 : "Booking saved successfully. Payment is pending.");
@@ -65,6 +65,33 @@ public sealed partial class BookingService(
         {
             logger.LogError(ex, "Database error while saving booking (SQL error {Number}).", ex.Number);
             return ResponseFactory.Failure<SaveBookingPaymentResponse>(StatusCodes.Status500InternalServerError, "Unable to save the booking right now. Please try again.", "BOOKING_SAVE_FAILED");
+        }
+    }
+
+    public async Task<CommonResponse<PagedResult<UpcomingBookingDto>>> GetUpcomingBookingsAsync(
+        string? phoneNumber,
+        int currentPage,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(phoneNumber))
+            return ResponseFactory.Failure<PagedResult<UpcomingBookingDto>>(StatusCodes.Status401Unauthorized, "Authentication is required.", "UNAUTHORIZED");
+        if (currentPage < 1)
+            return ResponseFactory.Failure<PagedResult<UpcomingBookingDto>>(StatusCodes.Status400BadRequest, "CurrentPage must be greater than zero.", "INVALID_CURRENT_PAGE");
+        if (pageSize is < 1 or > 100)
+            return ResponseFactory.Failure<PagedResult<UpcomingBookingDto>>(StatusCodes.Status400BadRequest, "PageSize must be between 1 and 100.", "INVALID_PAGE_SIZE");
+
+        try
+        {
+            var bookings = await repository.GetUpcomingBookingsAsync(MobileNumberHelper.NormalizeMobile(phoneNumber), currentPage, pageSize, cancellationToken);
+            return ResponseFactory.Success(bookings, bookings.TotalItems == 0
+                ? "No upcoming bookings found."
+                : "Upcoming bookings retrieved successfully.");
+        }
+        catch (SqlException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogError(ex, "Database error while fetching upcoming bookings (SQL error {Number}).", ex.Number);
+            return ResponseFactory.Failure<PagedResult<UpcomingBookingDto>>(StatusCodes.Status500InternalServerError, "Unable to fetch upcoming bookings right now. Please try again.", "UPCOMING_BOOKINGS_FETCH_FAILED");
         }
     }
 
