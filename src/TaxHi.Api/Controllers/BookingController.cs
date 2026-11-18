@@ -20,7 +20,7 @@ public sealed class BookingController(IBookingService bookingService, IBookingIn
     {
         int userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
         var response = await bookingService.SaveBookingPaymentAsync(request, userId, cancellationToken);
-        return new ObjectResult(response) { StatusCode = response.StatusCode };
+        return StatusCode(response.StatusCode, response);
     }
 
     // Streams the booking's invoice PDF. Only the booking's owner can download it; the file is rebuilt if it is missing.
@@ -31,7 +31,7 @@ public sealed class BookingController(IBookingService bookingService, IBookingIn
     {
         var response = await invoiceService.GetInvoiceFileAsync(bookingId, CurrentUserId(), cancellationToken);
         if (!response.Success || response.Data is null)
-            return new ObjectResult(response) { StatusCode = response.StatusCode };
+            return StatusCode(response.StatusCode, response);
 
         return PhysicalFile(response.Data.FullPath, "application/pdf", response.Data.FileName);
     }
@@ -42,7 +42,7 @@ public sealed class BookingController(IBookingService bookingService, IBookingIn
     public async Task<ActionResult<CommonResponse<BookingInvoiceResult>>> GenerateInvoice(long bookingId, CancellationToken cancellationToken)
     {
         var response = await invoiceService.RetryInvoiceAsync(bookingId, CurrentUserId(), cancellationToken);
-        return new ObjectResult(response) { StatusCode = response.StatusCode };
+        return StatusCode(response.StatusCode, response);
     }
 
     private int CurrentUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
@@ -57,6 +57,6 @@ public sealed class BookingController(IBookingService bookingService, IBookingIn
     {
         var mobileNumber = User.FindFirst(ClaimTypes.MobilePhone)?.Value;
         var response = await bookingService.GetUpcomingBookingsAsync(mobileNumber, currentPage, pageSize, cancellationToken);
-        return new ObjectResult(response) { StatusCode = response.StatusCode };
+        return StatusCode(response.StatusCode, response);
     }
 }

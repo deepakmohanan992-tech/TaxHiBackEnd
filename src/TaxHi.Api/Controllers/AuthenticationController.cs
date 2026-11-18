@@ -91,6 +91,6 @@ public sealed class AuthenticationController(IAuthenticationService authenticati
     private async Task<ActionResult<CommonResponse<T>>> Execute<T>(Task<CommonResponse<T>> operation)
     {
         var response = await operation;
-        return new ObjectResult(response) { StatusCode = response.StatusCode };
+        return StatusCode(response.StatusCode, response);
     }
 }
