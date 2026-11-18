@@ -55,6 +55,10 @@ public sealed class BookingInvoiceDto
     public string? PaymentStatus { get; set; }
     public string? PaymentMethod { get; set; }
 
+    // Km terms from the vendor rate card; null when no rate is configured
+    public decimal? IncludedKilometres { get; set; }
+    public decimal? ExtraKmRate { get; set; }
+
     public List<BookingInvoiceAddOnDto> AddOns { get; set; } = [];
     public List<BookingInvoicePaymentDto> Payments { get; set; } = [];
 }

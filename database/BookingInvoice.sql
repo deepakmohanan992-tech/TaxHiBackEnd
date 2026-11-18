@@ -56,7 +56,6 @@ BEGIN
         b.PickupLocation,
         b.DropLocation,
         b.PickupDateTime,
-        b.ReturnDateTime,
         b.DropDate,
         COALESCE(NULLIF(d.PickUpCity, ''), fc.Name)  AS FromCity,
         COALESCE(NULLIF(d.DropCity, ''),   tc.Name)  AS ToCity,
@@ -84,7 +83,11 @@ BEGIN
         paid.LastPaidDateUtc                              AS PaidDateUtc,
         b.TotalFare - ISNULL(paid.PaidAmount, 0)          AS OutstandingAmount,
         latest.PaymentStatus,
-        latest.PaymentMethod
+        latest.PaymentMethod,
+
+        -- Km terms from the vendor rate card the customer was quoted (same lookup as USP_GetAvailableCabListing)
+        CAST(rate.MinimumKM AS DECIMAL(18,2))   AS IncludedKilometres,
+        CAST(rate.ExtraKMRate AS DECIMAL(18,2)) AS ExtraKmRate
     FROM dbo.TaxHiBEBookings b
     LEFT JOIN dbo.AuthUsers u
            ON u.UserId = b.UserId
@@ -111,6 +114,18 @@ BEGIN
         WHERE p.BookingId = b.BookingId
         ORDER BY p.BookingPaymentId DESC
     ) latest
+    OUTER APPLY (
+        SELECT TOP (1) RD.MinimumKM, RD.ExtraKMRate
+        FROM dbo.TransportVendorRateDetails RD
+        WHERE RD.VendorId = b.VendorId
+          AND RD.VehicleCategoryId = b.VehicleCategoryId
+          AND RD.IsActive = 1
+          AND (   (RD.ContractFromDate <= COALESCE(CAST(b.DropDate AS DATE), CAST(b.PickupDateTime AS DATE))
+                   AND RD.ContractToDate >= CAST(b.PickupDateTime AS DATE))
+               OR RD.ContractFromDate IS NULL)
+        ORDER BY CASE WHEN RD.ContractFromDate IS NOT NULL THEN 0 ELSE 1 END,
+                 RD.ContractFromDate DESC, RD.RateDetailId DESC
+    ) rate
     WHERE b.BookingId = @BookingId
       AND b.UserId = @UserId;
 

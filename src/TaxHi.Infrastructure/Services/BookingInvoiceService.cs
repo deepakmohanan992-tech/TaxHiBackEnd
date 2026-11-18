@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Configuration;
 using QuestPDF.Fluent;
 using QuestPDF.Infrastructure;
 using TaxHi.Application.Models;
@@ -15,13 +15,15 @@ namespace TaxHi.Infrastructure.Services;
 
 public sealed class BookingInvoiceService(
     IBookingInvoiceRepository repository,
-    IOptions<InvoiceOptions> options,
+    IConfiguration configuration,
     IHostEnvironment environment,
     ILogger<BookingInvoiceService> logger) : IBookingInvoiceService
 {
     static BookingInvoiceService() => QuestPDF.Settings.License = LicenseType.Community;
 
-    private readonly InvoiceOptions _options = options.Value;
+    // Read from the "Invoice" section of appsettings.json.
+    private string StoragePath => configuration["Invoice:StoragePath"] is { Length: > 0 } p ? p : "wwwroot/invoices";
+    private string? LogoPath => configuration["Invoice:LogoPath"];
 
     public static string DownloadUrl(long bookingId) => $"/api/Booking/DownloadInvoice/{bookingId}";
 
@@ -61,7 +63,7 @@ public sealed class BookingInvoiceService(
             if (!TryResolve(relativePath, out var fullPath))
                 throw new InvalidOperationException($"Invoice path for booking {data.BookingNo} is outside the storage folder.");
 
-            var pdf = new BookingInvoiceDocument(data, _options, LoadLogo()).GeneratePdf();
+            var pdf = new BookingInvoiceDocument(data, configuration, LoadLogo()).GeneratePdf();
 
             // Write to a temp file, then swap it in, so a reader never sees a half-written PDF.
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
@@ -136,9 +138,9 @@ public sealed class BookingInvoiceService(
     // ---------------------------------------------------------------- helpers
 
     private string StorageRoot =>
-        Path.GetFullPath(Path.IsPathRooted(_options.StoragePath)
-            ? _options.StoragePath
-            : Path.Combine(environment.ContentRootPath, _options.StoragePath));
+        Path.GetFullPath(Path.IsPathRooted(StoragePath)
+            ? StoragePath
+            : Path.Combine(environment.ContentRootPath, StoragePath));
 
     /// <summary>Maps a stored relative path to a full path, refusing anything that escapes the storage folder.</summary>
     private bool TryResolve(string? relativePath, out string fullPath)
@@ -164,12 +166,12 @@ public sealed class BookingInvoiceService(
 
     private byte[]? LoadLogo()
     {
-        if (string.IsNullOrWhiteSpace(_options.LogoPath)) return null;
+        if (string.IsNullOrWhiteSpace(LogoPath)) return null;
         try
         {
-            var path = Path.IsPathRooted(_options.LogoPath)
-                ? _options.LogoPath
-                : Path.Combine(environment.ContentRootPath, _options.LogoPath);
+            var path = Path.IsPathRooted(LogoPath)
+                ? LogoPath
+                : Path.Combine(environment.ContentRootPath, LogoPath);
             return File.Exists(path) ? File.ReadAllBytes(path) : null;
         }
         catch (Exception ex)

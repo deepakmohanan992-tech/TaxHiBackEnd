@@ -3,12 +3,12 @@ using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using TaxHi.Application.Models.Booking;
-using TaxHi.Application.Services;
+using Microsoft.Extensions.Configuration;
 
 namespace TaxHi.Infrastructure.Pdf;
 
 /// <summary>A4 "Travel Itinerary" invoice for one booking.</summary>
-public sealed class BookingInvoiceDocument(BookingInvoiceDto data, InvoiceOptions options, byte[]? logo = null) : IDocument
+public sealed class BookingInvoiceDocument(BookingInvoiceDto data, IConfiguration configuration, byte[]? logo = null) : IDocument
 {
     private const string Brand = "#2E8BC9";
     private const string BrandBand = "#D9E7EC";
@@ -21,10 +21,17 @@ public sealed class BookingInvoiceDocument(BookingInvoiceDto data, InvoiceOption
 
     private static readonly CultureInfo Money = BuildMoneyCulture();
 
+    // Read straight from the "Invoice" section of appsettings.json; defaults only keep the PDF from breaking.
+    private string CompanyName => configuration["Invoice:CompanyName"] is { Length: > 0 } v ? v : "TaxHi";
+    private string SupportEmail => configuration["Invoice:SupportEmail"] ?? string.Empty;
+    private string SupportPhone => configuration["Invoice:SupportPhone"] ?? string.Empty;
+    private string CompanyAddress => configuration["Invoice:CompanyAddress"] ?? string.Empty;
+    private string Website => configuration["Invoice:Website"] ?? string.Empty;
+
     public DocumentMetadata GetMetadata() => new()
     {
         Title = $"Travel Itinerary {data.BookingNo}",
-        Author = options.CompanyName,
+        Author = CompanyName,
         Subject = "Booking invoice"
     };
 
@@ -61,7 +68,7 @@ public sealed class BookingInvoiceDocument(BookingInvoiceDto data, InvoiceOption
         }
 
         container.Background(Brand).CornerRadius(5).PaddingHorizontal(22).PaddingVertical(5)
-            .Text(options.CompanyName).FontSize(20).Bold().FontColor(Colors.White);
+            .Text(CompanyName).FontSize(20).Bold().FontColor(Colors.White);
     }
 
     private void ComposeFooter(IContainer container) =>
@@ -73,18 +80,18 @@ public sealed class BookingInvoiceDocument(BookingInvoiceDto data, InvoiceOption
                 row.RelativeItem().Column(c =>
                 {
                     c.Item().Text("In case of any queries reach out to us at:").FontSize(8).FontColor(Muted);
-                    c.Item().Text(options.SupportEmail).Bold().FontSize(9);
-                    if (!string.IsNullOrWhiteSpace(options.SupportPhone))
-                        c.Item().Text(options.SupportPhone).Bold().FontSize(9);
+                    c.Item().Text(SupportEmail).Bold().FontSize(9);
+                    if (!string.IsNullOrWhiteSpace(SupportPhone))
+                        c.Item().Text(SupportPhone).Bold().FontSize(9);
                 });
                 row.RelativeItem().AlignCenter().Text("24x7 Customer Support  |  Transparent Billing")
                     .FontSize(8).FontColor(Muted);
                 row.RelativeItem().AlignRight().Column(c =>
                 {
-                    c.Item().AlignRight().Text(options.CompanyName).Bold().FontSize(10).FontColor(Brand);
-                    c.Item().AlignRight().Text(options.Website).FontSize(8).FontColor(Muted);
-                    if (!string.IsNullOrWhiteSpace(options.CompanyAddress))
-                        c.Item().AlignRight().Text(options.CompanyAddress).FontSize(7).FontColor(Muted);
+                    c.Item().AlignRight().Text(CompanyName).Bold().FontSize(10).FontColor(Brand);
+                    c.Item().AlignRight().Text(Website).FontSize(8).FontColor(Muted);
+                    if (!string.IsNullOrWhiteSpace(CompanyAddress))
+                        c.Item().AlignRight().Text(CompanyAddress).FontSize(7).FontColor(Muted);
                 });
             });
             col.Item().Background("#F4F7F9").PaddingBottom(6).AlignCenter().Text(t =>
@@ -181,7 +188,22 @@ public sealed class BookingInvoiceDocument(BookingInvoiceDto data, InvoiceOption
                 AmountRow(col, string.IsNullOrWhiteSpace(data.CouponCode) ? "d) Discount" : $"d) Discount ({data.CouponCode})",
                     -data.DiscountAmount);
             AmountRow(col, "e) GST", data.GSTAmount);
+
+            col.Item().PaddingTop(6).PaddingVertical(2)
+                .Text("Extra Charges, if applicable (to be paid to the driver during the trip):").Bold();
+            foreach (var line in ExtraChargeLines())
+                col.Item().PaddingVertical(2).Text(line);
         });
+
+    // Km terms come from the vendor rate card; when unavailable the line stays generic so the PDF never breaks.
+    private IEnumerable<string> ExtraChargeLines()
+    {
+        yield return data.IncludedKilometres is > 0 && data.ExtraKmRate is > 0
+            ? $"a) Distance travelled beyond {data.IncludedKilometres.Value.ToString("0.##", CultureInfo.InvariantCulture)} km will be charged at Rs. {data.ExtraKmRate.Value.ToString("N2", Money)}/km."
+            : "a) Distance travelled beyond the included kilometres will be charged at the applicable per-km rate.";
+        yield return "b) This fare includes inter-state tax and toll, but does not include parking.";
+        yield return "c) This fare also includes TDS charges applicable for the trip.";
+    }
 
     private void ComposePayment(IContainer container) =>
         container.Column(col =>
@@ -191,7 +213,7 @@ public sealed class BookingInvoiceDocument(BookingInvoiceDto data, InvoiceOption
             Row(col, "Payment Status", PaymentStatusText(), bold: true);
             if (IsPartPay && data.PayableNowAmount > 0)
                 AmountRow(col, "Advance Payable Now", data.PayableNowAmount);
-            AmountRow(col, "Actual Amount Paid", data.AmountPaid, bold: true);
+            AmountRow(col, "Actual Amount Paid", ActualAmountPaid, bold: true);
             if (data.PaidDateUtc is { } paidOn)
                 Row(col, "Paid On", FormatDateTime(paidOn.ToLocalTime()));
             AmountRow(col, "Outstanding Balance", Outstanding, IsPartPay ? "(To be paid as per part-payment terms)" : null, bold: true);
@@ -297,8 +319,11 @@ public sealed class BookingInvoiceDocument(BookingInvoiceDto data, InvoiceOption
 
     private bool IsPartPay => string.Equals(data.PaymentOption, "PartPay", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Total minus money actually received; never negative.</summary>
-    private decimal Outstanding => Math.Max(0m, data.TotalFare - data.AmountPaid);
+    /// <summary>Shown as "Actual Amount Paid": mirrors the Advance Payable Now amount (the amount due at booking).</summary>
+    private decimal ActualAmountPaid => data.PayableNowAmount;
+
+    /// <summary>Total minus the amount shown as paid, so the three figures always add up; never negative.</summary>
+    private decimal Outstanding => Math.Max(0m, data.TotalFare - ActualAmountPaid);
 
     private string PaymentOptionText() => IsPartPay ? "Part Payment (advance + balance)" : "Full Payment";
 
