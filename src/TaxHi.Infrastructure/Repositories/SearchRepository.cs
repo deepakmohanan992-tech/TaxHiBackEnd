@@ -71,6 +71,7 @@ public sealed class SearchRepository(IDbConnection connection) : ISearchReposito
             commandText: "USP_GetAvailableCabListing",
             parameters: parameters,
             commandType: CommandType.StoredProcedure,
+            commandTimeout: 120,
             cancellationToken: cancellationToken);
 
         using var resultSets = await connection.QueryMultipleAsync(command);

@@ -21,6 +21,7 @@ public sealed class SaveBookingPaymentRequest
     public int ToCityId { get; init; }
     public string? Route { get; init; }
     public DateTime PickupDateTime { get; init; }
+    public DateTime? ReturnDateTime { get; init; }
     public DateOnly? DropDate { get; init; }
     public string PickupLocation { get; init; } = string.Empty;
     public string DropLocation { get; init; } = string.Empty;
@@ -71,6 +72,11 @@ public sealed class SaveBookingPaymentResponse
     public decimal TotalFare { get; set; }
     public decimal PayableNowAmount { get; set; }
     public decimal BalancePayableAmount { get; set; }
+
+    /// <summary>True when the invoice PDF exists. False means it can be retried; the booking itself is unaffected.</summary>
+    public bool InvoiceGenerated { get; set; }
+    /// <summary>Authenticated download URL of the invoice PDF; null when <see cref="InvoiceGenerated"/> is false.</summary>
+    public string? InvoiceUrl { get; set; }
 }
 
 /// <summary>Server-computed, rounded amounts passed to the repository.</summary>

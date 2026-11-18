@@ -22,6 +22,7 @@ public sealed class BookingRepository(IDbConnection connection, IOptions<Booking
         int userId,
         BookingAmounts amounts,
         string bookingNo,
+        string tripCode,
         CancellationToken cancellationToken = default)
     {
         try
@@ -65,6 +66,11 @@ public sealed class BookingRepository(IDbConnection connection, IOptions<Booking
             parameters.Add("ToCityId", request.ToCityId, DbType.Int32);
             parameters.Add("Route", request.Route, DbType.String);
             parameters.Add("PickupDateTime", request.PickupDateTime, DbType.DateTime2);
+            parameters.Add(
+    "ReturnDateTime",
+    request.ReturnDateTime ?? request.PickupDateTime,
+    DbType.DateTime2
+);
             parameters.Add("DropDate", request.DropDate?.ToDateTime(TimeOnly.MinValue), DbType.Date);
             parameters.Add("PickupLocation", request.PickupLocation.Trim(), DbType.String);
             parameters.Add("DropLocation", request.DropLocation.Trim(), DbType.String);
@@ -93,6 +99,7 @@ public sealed class BookingRepository(IDbConnection connection, IOptions<Booking
             parameters.Add("PayableNowAmount", amounts.PayableNowAmount, DbType.Decimal);
             parameters.Add("BalancePayableAmount", amounts.BalancePayableAmount, DbType.Decimal);
             parameters.Add("BookingNo", bookingNo, DbType.String);
+            parameters.Add("TripCode", tripCode, DbType.AnsiString, size: 50);
             parameters.Add("AddOns", addOns, DbType.Xml);
             parameters.Add("HoldMinutes", options.Value.HoldDurationMinutes, DbType.Int32);
             parameters.Add("LockTimeoutMs", options.Value.LockTimeoutMilliseconds, DbType.Int32);
@@ -101,6 +108,7 @@ public sealed class BookingRepository(IDbConnection connection, IOptions<Booking
                 "USP_SaveBookingPayment",
                 parameters,
                 commandType: CommandType.StoredProcedure,
+                commandTimeout: 120,
                 cancellationToken: cancellationToken);
 
             // Retry handling
@@ -118,6 +126,12 @@ public sealed class BookingRepository(IDbConnection connection, IOptions<Booking
                     await Task.Delay(
                         Random.Shared.Next(20, 80) * attempt,
                         cancellationToken);
+                }
+                catch (SqlException ex) when (
+                    ex.Number == 50007 && // TripCode already exists; nothing was saved, so try a fresh code
+                    attempt < MaxBookingNoAttempts)
+                {
+                    parameters.Add("TripCode", GetTripCode(), DbType.AnsiString, size: 10);
                 }
                 catch (SqlException ex) when (
                     (ex.Number is 2601 or 2627) &&
@@ -185,7 +199,15 @@ public sealed class BookingRepository(IDbConnection connection, IOptions<Booking
         };
     }
 
+    private const string TripCodeAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    private const int TripCodeLength = 10;
+
+    /// <summary>Random 10-character uppercase alphanumeric TripCode (cryptographically random, unbiased).</summary>
+    public static string GetTripCode() =>
+        string.Create(TripCodeLength, 0, static (span, _) =>
+            System.Security.Cryptography.RandomNumberGenerator.GetItems<char>(TripCodeAlphabet, span));
+
     // Format: M{MM}{yy}-{8 random digits}, e.g. M1126-13334779
     public static string GenerateBookingNo() =>
-        $"M{DateTime.Now:MM}{DateTime.Now:yy}-{Random.Shared.Next(10000000, 99999999)}";
+        $"T{DateTime.Now:MM}{DateTime.Now:yy}-{Random.Shared.Next(10000000, 99999999)}";
 }

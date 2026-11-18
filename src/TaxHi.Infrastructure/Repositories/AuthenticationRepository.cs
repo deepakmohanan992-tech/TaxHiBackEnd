@@ -85,6 +85,7 @@ public sealed class AuthenticationRepository(IDbConnection connection) : IAuthen
             "USP_SaveRefreshToken",
             new { UserId = userId, TokenHash = tokenHash, ExpiresUtc = expiresUtc },
             commandType: CommandType.StoredProcedure,
+            commandTimeout: 120,
             cancellationToken: cancellationToken);
         await connection.ExecuteAsync(command);
     }
@@ -95,6 +96,7 @@ public sealed class AuthenticationRepository(IDbConnection connection) : IAuthen
             "USP_ValidateRefreshToken",
             new { TokenHash = tokenHash },
             commandType: CommandType.StoredProcedure,
+            commandTimeout: 120,
             cancellationToken: cancellationToken);
         return await connection.QuerySingleOrDefaultAsync<RefreshTokenRecord>(command);
     }

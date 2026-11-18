@@ -30,6 +30,12 @@ public static class DependencyInjection
             .ValidateOnStart();
         services.AddScoped<IBookingRepository, BookingRepository>();
         services.AddScoped<IBookingService, BookingService>();
+        services.AddOptions<InvoiceOptions>()
+            .Bind(configuration.GetSection("Invoice"))
+            .Validate(o => !string.IsNullOrWhiteSpace(o.StoragePath), "Invoice:StoragePath is required.")
+            .ValidateOnStart();
+        services.AddScoped<IBookingInvoiceRepository, BookingInvoiceRepository>();
+        services.AddScoped<IBookingInvoiceService, BookingInvoiceService>();
         services.AddSingleton<IOtpNotifier, NullOtpNotifier>();
         services.AddOptions<AuthenticationOptions>()
             .Bind(configuration.GetSection("Authentication"))

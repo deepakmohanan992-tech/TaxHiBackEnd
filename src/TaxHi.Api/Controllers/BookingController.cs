@@ -9,7 +9,7 @@ namespace TaxHi.Api.Controllers;
 
 [ApiController]
 [Route("api/Booking")]
-public sealed class BookingController(IBookingService bookingService) : ControllerBase
+public sealed class BookingController(IBookingService bookingService, IBookingInvoiceService invoiceService) : ControllerBase
 {
     // Guests can check out, matching the guest-booking flow in AuthenticationController.
     [Authorize]
@@ -22,6 +22,30 @@ public sealed class BookingController(IBookingService bookingService) : Controll
         var response = await bookingService.SaveBookingPaymentAsync(request, userId, cancellationToken);
         return new ObjectResult(response) { StatusCode = response.StatusCode };
     }
+
+    // Streams the booking's invoice PDF. Only the booking's owner can download it; the file is rebuilt if it is missing.
+    [Authorize]
+    [HttpGet("DownloadInvoice/{bookingId:long}")]
+    [Produces("application/pdf", "application/json")]
+    public async Task<IActionResult> DownloadInvoice(long bookingId, CancellationToken cancellationToken)
+    {
+        var response = await invoiceService.GetInvoiceFileAsync(bookingId, CurrentUserId(), cancellationToken);
+        if (!response.Success || response.Data is null)
+            return new ObjectResult(response) { StatusCode = response.StatusCode };
+
+        return PhysicalFile(response.Data.FullPath, "application/pdf", response.Data.FileName);
+    }
+
+    // Retry for a booking whose invoice was not generated (or was lost). Idempotent; never creates a booking.
+    [Authorize]
+    [HttpPost("GenerateInvoice/{bookingId:long}")]
+    public async Task<ActionResult<CommonResponse<BookingInvoiceResult>>> GenerateInvoice(long bookingId, CancellationToken cancellationToken)
+    {
+        var response = await invoiceService.RetryInvoiceAsync(bookingId, CurrentUserId(), cancellationToken);
+        return new ObjectResult(response) { StatusCode = response.StatusCode };
+    }
+
+    private int CurrentUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
 
     // Returns the signed-in user's own upcoming bookings, matched on the mobile number in their token.
     [Authorize]

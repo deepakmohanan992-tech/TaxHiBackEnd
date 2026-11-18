@@ -16,6 +16,7 @@ namespace TaxHi.Infrastructure.Services;
 
 public sealed partial class BookingService(
     IBookingRepository repository,
+    IBookingInvoiceService invoiceService,
     ILogger<BookingService> logger) : IBookingService
 {
     private const decimal PartPayPercent = 25m;
@@ -34,7 +35,14 @@ public sealed partial class BookingService(
 
         try
         {
-            var saved = await repository.SaveBookingPaymentAsync(request, userId, amounts!, BookingRepository.GenerateBookingNo(), cancellationToken);
+            var saved = await repository.SaveBookingPaymentAsync(request, userId, amounts!, BookingRepository.GenerateBookingNo(), BookingRepository.GetTripCode(), cancellationToken);
+
+            // The booking is committed at this point. Invoice generation is best-effort and never throws,
+            // so a PDF problem cannot turn a saved booking into a failed response.
+            var invoice = await invoiceService.EnsureInvoiceAsync(saved.BookingId, userId, saved.BookingNo, cancellationToken: cancellationToken);
+            saved.InvoiceGenerated = invoice.InvoiceGenerated;
+            saved.InvoiceUrl = invoice.InvoiceUrl;
+
             return ResponseFactory.Success(saved, saved.IsDuplicateRequest
                 ? "This booking request was already processed. Returning the existing booking."
                 : "Booking saved successfully. Payment is pending.");

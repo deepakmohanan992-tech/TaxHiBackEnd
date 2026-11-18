@@ -9,6 +9,7 @@ public interface IBookingRepository
         SaveBookingPaymentRequest request,int userId,
         BookingAmounts amounts,
         string bookingNo,
+        string tripCode,
         CancellationToken cancellationToken = default);
 
     Task<PagedResult<UpcomingBookingDto>> GetUpcomingBookingsAsync(
