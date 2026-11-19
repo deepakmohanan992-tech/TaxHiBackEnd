@@ -18,4 +18,8 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TaxHi.Infrastructure\TaxHi.Infrastructure.csproj" />
+  </ItemGroup>
+
 </Project>

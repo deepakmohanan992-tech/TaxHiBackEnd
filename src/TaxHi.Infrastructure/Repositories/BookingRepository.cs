@@ -199,6 +199,78 @@ public sealed class BookingRepository(IDbConnection connection, IOptions<Booking
         };
     }
 
+    // ---------------------------------------------------------------- Razorpay payment state (database/RazorpayPayment.sql)
+
+    public async Task<BookingPaymentContext?> GetPaymentContextAsync(
+        long? bookingId, string? gatewayOrderId, CancellationToken cancellationToken = default)
+    {
+        var parameters = new DynamicParameters();
+        parameters.Add("BookingId", bookingId is { } id ? (int?)id : null, DbType.Int32);
+        parameters.Add("GatewayOrderId", gatewayOrderId, DbType.AnsiString, size: 64);
+
+        return await connection.QuerySingleOrDefaultAsync<BookingPaymentContext>(new CommandDefinition(
+            "USP_GetBookingPaymentContext", parameters, commandType: CommandType.StoredProcedure, cancellationToken: cancellationToken));
+    }
+
+    public async Task<string> SetGatewayOrderAsync(
+        long bookingPaymentId, string gatewayOrderId, CancellationToken cancellationToken = default)
+    {
+        var parameters = new DynamicParameters();
+        parameters.Add("BookingPaymentId", bookingPaymentId, DbType.Int64);
+        parameters.Add("GatewayOrderId", gatewayOrderId, DbType.AnsiString, size: 64);
+
+        return await connection.QuerySingleAsync<string>(new CommandDefinition(
+            "USP_SetBookingPaymentGatewayOrder", parameters, commandType: CommandType.StoredProcedure, cancellationToken: cancellationToken));
+    }
+
+    public Task<GatewayPaymentResult> ConfirmGatewayPaymentAsync(
+        string gatewayOrderId, string gatewayPaymentId, long? amountPaise, string? paymentMethod,
+        string? eventId, string? eventType, CancellationToken cancellationToken = default)
+    {
+        var parameters = new DynamicParameters();
+        parameters.Add("GatewayOrderId", gatewayOrderId, DbType.AnsiString, size: 64);
+        parameters.Add("GatewayPaymentId", gatewayPaymentId, DbType.AnsiString, size: 64);
+        parameters.Add("AmountPaise", amountPaise, DbType.Int64);
+        parameters.Add("PaymentMethod", paymentMethod, DbType.String, size: 50);
+        parameters.Add("EventId", eventId, DbType.AnsiString, size: 100);
+        parameters.Add("EventType", eventType, DbType.AnsiString, size: 60);
+        parameters.Add("HoldMinutes", options.Value.HoldDurationMinutes, DbType.Int32);
+        parameters.Add("LockTimeoutMs", options.Value.LockTimeoutMilliseconds, DbType.Int32);
+        return RunGatewayProcedureAsync("USP_ConfirmBookingGatewayPayment", parameters, cancellationToken);
+    }
+
+    public Task<GatewayPaymentResult> FailGatewayPaymentAsync(
+        string gatewayOrderId, string? gatewayPaymentId, string? reason,
+        string? eventId, string? eventType, CancellationToken cancellationToken = default)
+    {
+        var parameters = new DynamicParameters();
+        parameters.Add("GatewayOrderId", gatewayOrderId, DbType.AnsiString, size: 64);
+        parameters.Add("GatewayPaymentId", gatewayPaymentId, DbType.AnsiString, size: 64);
+        parameters.Add("Reason", reason is { Length: > 500 } ? reason[..500] : reason, DbType.String, size: 500);
+        parameters.Add("EventId", eventId, DbType.AnsiString, size: 100);
+        parameters.Add("EventType", eventType, DbType.AnsiString, size: 60);
+        return RunGatewayProcedureAsync("USP_FailBookingGatewayPayment", parameters, cancellationToken);
+    }
+
+    private async Task<GatewayPaymentResult> RunGatewayProcedureAsync(
+        string procedure, DynamicParameters parameters, CancellationToken cancellationToken)
+    {
+        var command = new CommandDefinition(procedure, parameters, commandType: CommandType.StoredProcedure,
+            commandTimeout: 120, cancellationToken: cancellationToken);
+
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await connection.QuerySingleAsync<GatewayPaymentResult>(command);
+            }
+            catch (SqlException ex) when (ex.Number == 1205 && attempt < MaxDeadlockAttempts)
+            {
+                await Task.Delay(Random.Shared.Next(20, 80) * attempt, cancellationToken);
+            }
+        }
+    }
+
     private const string TripCodeAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     private const int TripCodeLength = 10;
 

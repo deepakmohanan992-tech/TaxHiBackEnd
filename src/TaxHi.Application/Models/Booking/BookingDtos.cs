@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace TaxHi.Application.Models.Booking;
 
 public sealed class SaveBookingPaymentRequest
@@ -150,4 +152,72 @@ public sealed class UpcomingBookingDto
     public decimal BalanceDueAmount { get; set; }
     /// <summary>When the most recent successful payment was made; null if nothing has been paid yet.</summary>
     public DateTime? PaidDateUtc { get; set; }
+}
+
+// ------------------------------------------------------------------ Razorpay payment flow
+
+/// <summary>Returned by CreateOrder; everything the React checkout needs. Never contains the key secret.</summary>
+public sealed class RazorpayOrderResponse
+{
+    public string KeyId { get; set; } = string.Empty;
+    public string OrderId { get; set; } = string.Empty;
+    /// <summary>Amount in paise.</summary>
+    public long Amount { get; set; }
+    public string Currency { get; set; } = "INR";
+    /// <summary>The booking number (also used as the Razorpay receipt).</summary>
+    public string BookingReference { get; set; } = string.Empty;
+    public long BookingId { get; set; }
+    public DateTime? HoldExpiresAtUtc { get; set; }
+}
+
+public sealed class VerifyRazorpayPaymentRequest
+{
+    [JsonPropertyName("razorpay_payment_id")] public string RazorpayPaymentId { get; init; } = string.Empty;
+    [JsonPropertyName("razorpay_order_id")] public string RazorpayOrderId { get; init; } = string.Empty;
+    [JsonPropertyName("razorpay_signature")] public string RazorpaySignature { get; init; } = string.Empty;
+}
+
+public sealed class PaymentVerificationResponse
+{
+    public long BookingId { get; set; }
+    public string? BookingNo { get; set; }
+    public string BookingStatus { get; set; } = string.Empty;
+    public string PaymentStatus { get; set; } = string.Empty;
+    public decimal AmountPaid { get; set; }
+    public decimal BalancePayableAmount { get; set; }
+    /// <summary>True when this payment had already been processed (repeat call, or the webhook got there first).</summary>
+    public bool AlreadyProcessed { get; set; }
+    public bool InvoiceGenerated { get; set; }
+    public string? InvoiceUrl { get; set; }
+}
+
+/// <summary>Latest payment attempt of a booking, as read by USP_GetBookingPaymentContext.</summary>
+public sealed class BookingPaymentContext
+{
+    public long BookingId { get; set; }
+    public string BookingNo { get; set; } = string.Empty;
+    public int UserId { get; set; }
+    public string BookingStatus { get; set; } = string.Empty;
+    public DateTime? HoldExpiresAtUtc { get; set; }
+    public decimal TotalFare { get; set; }
+    public decimal BalancePayableAmount { get; set; }
+    public long BookingPaymentId { get; set; }
+    public string PaymentStatus { get; set; } = string.Empty;
+    public decimal PaymentAmount { get; set; }
+    public string? PaymentGatewayOrderId { get; set; }
+    public string? PaymentGatewayPaymentId { get; set; }
+}
+
+/// <summary>Outcome of USP_ConfirmBookingGatewayPayment / USP_FailBookingGatewayPayment.</summary>
+public sealed class GatewayPaymentResult
+{
+    /// <summary>Confirmed | AlreadyProcessed | DuplicateEvent | Failed | Ignored | OrderNotFound | AmountMismatch | PaymentIdConflict | RefundRequired</summary>
+    public string Outcome { get; set; } = string.Empty;
+    public long BookingId { get; set; }
+    public int UserId { get; set; }
+    public string? BookingNo { get; set; }
+    public string? BookingStatus { get; set; }
+    public string? PaymentStatus { get; set; }
+    public decimal AmountPaid { get; set; }
+    public decimal BalancePayableAmount { get; set; }
 }
