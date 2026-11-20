@@ -5,7 +5,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Configuration;
 using TaxHi.Application.Models;
 using TaxHi.Application.Models.Booking;
 using TaxHi.Application.Repositories;
@@ -24,12 +24,29 @@ public sealed class PaymentService(
     IBookingService bookingService,
     IBookingRepository repository,
     IBookingInvoiceService invoiceService,
-    IOptions<RazorpayOptions> options,
+    IConfiguration configuration,
     ILogger<PaymentService> logger) : IPaymentService
 {
     private const string Currency = "INR";
     private const int MaxIdLength = 64;
-    private readonly RazorpayOptions _options = options.Value;
+    private string KeyId => configuration["Razorpay:KeyId"] ?? string.Empty;
+    private string KeySecret => configuration["Razorpay:KeySecret"] ?? string.Empty;
+    private string WebhookSecret => configuration["Razorpay:WebhookSecret"] ?? string.Empty;
+
+    // Base address, timeout and Basic auth come from the "Razorpay" section of appsettings.Development.json.
+    private readonly HttpClient _client = ConfigureClient(httpClient, configuration);
+
+    private static HttpClient ConfigureClient(HttpClient client, IConfiguration configuration)
+    {
+        var baseUrl = configuration["Razorpay:ApiBaseUrl"] is { Length: > 0 } u ? u : "https://api.razorpay.com/v1/";
+        client.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/");
+        client.Timeout = TimeSpan.FromSeconds(int.TryParse(configuration["Razorpay:HttpTimeoutSeconds"], out var t) && t > 0 ? t : 20);
+        var keyId = configuration["Razorpay:KeyId"];
+        if (!string.IsNullOrEmpty(keyId))
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{keyId}:{configuration["Razorpay:KeySecret"]}")));
+        return client;
+    }
 
     // ------------------------------------------------------------------ create order
 
@@ -76,7 +93,7 @@ public sealed class PaymentService(
 
             return ResponseFactory.Success(new RazorpayOrderResponse
             {
-                KeyId = _options.KeyId,
+                KeyId = KeyId,
                 OrderId = orderId,
                 Amount = amountPaise,
                 Currency = Currency,
@@ -189,10 +206,10 @@ public sealed class PaymentService(
     public async Task<CommonResponse<string>> HandleWebhookAsync(
         string rawBody, string? signature, string? eventId, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(_options.WebhookSecret))
+        if (string.IsNullOrEmpty(WebhookSecret))
             return ResponseFactory.Failure<string>(StatusCodes.Status503ServiceUnavailable, "Webhook is not configured.", "WEBHOOK_NOT_CONFIGURED");
 
-        if (string.IsNullOrWhiteSpace(signature) || !IsValidSignature(rawBody, _options.WebhookSecret, signature))
+        if (string.IsNullOrWhiteSpace(signature) || !IsValidSignature(rawBody, WebhookSecret, signature))
         {
             logger.LogWarning("Rejected Razorpay webhook with an invalid signature.");
             return ResponseFactory.Failure<string>(StatusCodes.Status401Unauthorized, "Invalid webhook signature.", "INVALID_WEBHOOK_SIGNATURE");
@@ -272,10 +289,10 @@ public sealed class PaymentService(
 
     // ------------------------------------------------------------------ helpers
 
-    private bool IsConfigured => !string.IsNullOrWhiteSpace(_options.KeyId) && !string.IsNullOrWhiteSpace(_options.KeySecret);
+    private bool IsConfigured => !string.IsNullOrWhiteSpace(KeyId) && !string.IsNullOrWhiteSpace(KeySecret);
 
     private bool IsValidCheckoutSignature(string orderId, string paymentId, string signature) =>
-        IsValidSignature($"{orderId}|{paymentId}", _options.KeySecret, signature);
+        IsValidSignature($"{orderId}|{paymentId}", KeySecret, signature);
 
     /// <summary>HMAC-SHA256 (hex) of <paramref name="payload"/> compared in constant time.</summary>
     internal static bool IsValidSignature(string payload, string secret, string signature)
@@ -302,7 +319,7 @@ public sealed class PaymentService(
     {
         try
         {
-            using var response = await httpClient.PostAsJsonAsync("orders", new
+            using var response = await _client.PostAsJsonAsync("orders", new
             {
                 amount = amountPaise,
                 currency = Currency,

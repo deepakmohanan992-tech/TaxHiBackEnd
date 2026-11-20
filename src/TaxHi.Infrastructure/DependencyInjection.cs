@@ -2,7 +2,6 @@ using System.Data;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using TaxHi.Application.Repositories;
 using TaxHi.Application.Services;
 using TaxHi.Infrastructure.Repositories;
@@ -33,23 +32,7 @@ public static class DependencyInjection
         services.AddScoped<IBookingService, BookingService>();
         services.AddScoped<IBookingInvoiceRepository, BookingInvoiceRepository>();
         services.AddScoped<IBookingInvoiceService, BookingInvoiceService>();
-        services.AddOptions<RazorpayOptions>()
-            .Bind(configuration.GetSection("Razorpay"))
-            .Validate(o => o.Environment is "Test" or "Live", "Razorpay:Environment must be 'Test' or 'Live'.")
-            .Validate(o => string.IsNullOrEmpty(o.KeyId)
-                    || o.KeyId.StartsWith(o.Environment == "Live" ? "rzp_live_" : "rzp_test_", StringComparison.Ordinal),
-                "Razorpay:KeyId does not match Razorpay:Environment.")
-            .Validate(o => Uri.TryCreate(o.ApiBaseUrl, UriKind.Absolute, out _), "Razorpay:ApiBaseUrl must be an absolute URL.")
-            .ValidateOnStart();
-        services.AddHttpClient<IPaymentService, PaymentService>((provider, client) =>
-        {
-            var razorpay = provider.GetRequiredService<IOptions<RazorpayOptions>>().Value;
-            client.BaseAddress = new Uri(razorpay.ApiBaseUrl.EndsWith('/') ? razorpay.ApiBaseUrl : razorpay.ApiBaseUrl + "/");
-            client.Timeout = TimeSpan.FromSeconds(razorpay.HttpTimeoutSeconds);
-            if (!string.IsNullOrEmpty(razorpay.KeyId))
-                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
-                    "Basic", Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{razorpay.KeyId}:{razorpay.KeySecret}")));
-        });
+        services.AddHttpClient<IPaymentService, PaymentService>();
         services.AddSingleton<IOtpNotifier, NullOtpNotifier>();
         services.AddOptions<AuthenticationOptions>()
             .Bind(configuration.GetSection("Authentication"))

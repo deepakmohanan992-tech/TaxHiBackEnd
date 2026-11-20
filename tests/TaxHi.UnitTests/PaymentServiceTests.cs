@@ -2,7 +2,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Configuration;
 using TaxHi.Application.Models;
 using TaxHi.Application.Models.Booking;
 using TaxHi.Application.Repositories;
@@ -32,7 +32,7 @@ public class PaymentServiceTests
             Service = new PaymentService(
                 new HttpClient(Http) { BaseAddress = new Uri("https://api.razorpay.test/v1/") },
                 Bookings, Repo, Invoices,
-                Options.Create(new RazorpayOptions { KeyId = keyId, KeySecret = KeySecret, WebhookSecret = WebhookSecret }),
+                new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Razorpay:KeyId"] = keyId, ["Razorpay:KeySecret"] = KeySecret, ["Razorpay:WebhookSecret"] = WebhookSecret, ["Razorpay:ApiBaseUrl"] = "https://api.razorpay.test/v1/" }).Build(),
                 NullLogger<PaymentService>.Instance);
         }
     }
