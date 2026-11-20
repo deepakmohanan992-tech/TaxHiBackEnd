@@ -50,6 +50,9 @@ public sealed class SaveBookingPaymentRequest
     public decimal BalancePayableAmount { get; init; }
 
     public List<BookingAddOnDto>? AddOns { get; init; }
+
+    /// <summary>Optional Google route details (from api/Maps/ComputeRoute). Stored separately; never affects fare or billing distance.</summary>
+    public TaxHi.Application.Models.Maps.BookingRouteDetailsDto? RouteDetails { get; init; }
 }
 
 public sealed class BookingAddOnDto

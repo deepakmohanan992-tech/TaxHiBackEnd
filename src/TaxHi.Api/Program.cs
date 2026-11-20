@@ -44,6 +44,18 @@ builder.Services.AddRateLimiter(options =>
             AutoReplenishment = true
         }));
 });
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("maps", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 120,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        }));
+});
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend", policy =>

@@ -17,6 +17,7 @@ namespace TaxHi.Infrastructure.Services;
 public sealed partial class BookingService(
     IBookingRepository repository,
     IBookingInvoiceService invoiceService,
+    IBookingRouteRepository routeRepository,
     ILogger<BookingService> logger) : IBookingService
 {
     private const decimal PartPayPercent = 25m;
@@ -42,6 +43,19 @@ public sealed partial class BookingService(
             var invoice = await invoiceService.EnsureInvoiceAsync(saved.BookingId, userId, saved.BookingNo, cancellationToken: cancellationToken);
             saved.InvoiceGenerated = invoice.InvoiceGenerated;
             saved.InvoiceUrl = invoice.InvoiceUrl;
+
+            // Optional Google route details; best-effort for the same reason as the invoice.
+            if (request.RouteDetails is not null && !saved.IsDuplicateRequest)
+            {
+                try
+                {
+                    await routeRepository.SaveRouteDetailsAsync(saved.BookingId, request.RouteDetails, cancellationToken);
+                }
+                catch (SqlException ex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    logger.LogError(ex, "Could not save route details for booking {BookingId} (SQL error {Number}).", saved.BookingId, ex.Number);
+                }
+            }
 
             return ResponseFactory.Success(saved, saved.IsDuplicateRequest
                 ? "This booking request was already processed. Returning the existing booking."
@@ -136,6 +150,8 @@ public sealed partial class BookingService(
             return ("DropDate cannot be before the pickup date.", "INVALID_DROP_DATE");
         if (string.IsNullOrWhiteSpace(r.PickupLocation) || string.IsNullOrWhiteSpace(r.DropLocation))
             return ("PickupLocation and DropLocation are required.", "INVALID_LOCATION");
+        if (r.RouteDetails is { } route && !IsValidRoute(route))
+            return ("RouteDetails are invalid.", "INVALID_ROUTE_DETAILS");
 
         if (r.VendorId <= 0 || r.VehicleId <= 0 || r.VehicleDetailsId <= 0 || r.VehicleCategoryId <= 0 || r.VehicleBrandId <= 0)
             return ("Vendor and vehicle identifiers are required.", "INVALID_VEHICLE");
@@ -171,6 +187,18 @@ public sealed partial class BookingService(
         amounts = new BookingAmounts(total, payNow, Round(total - payNow));
         return null;
     }
+
+    private static bool IsValidRoute(TaxHi.Application.Models.Maps.BookingRouteDetailsDto r) =>
+        IsValidCoordinate(r.PickupLatitude, r.PickupLongitude)
+        && IsValidCoordinate(r.DropLatitude, r.DropLongitude)
+        && r.GoogleDistanceKm is >= 0 and <= 99999
+        && r.GoogleDurationMinutes is >= 0 and <= 100000
+        && (r.PickupPlaceId?.Length ?? 0) <= 300
+        && (r.DropPlaceId?.Length ?? 0) <= 300
+        && (r.EncodedPolyline?.Length ?? 0) <= 200000;
+
+    private static bool IsValidCoordinate(double lat, double lng) =>
+        double.IsFinite(lat) && double.IsFinite(lng) && lat is >= -90 and <= 90 && lng is >= -180 and <= 180;
 
     private static decimal Round(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
 
