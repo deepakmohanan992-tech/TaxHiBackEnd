@@ -33,7 +33,6 @@ public static class DependencyInjection
         services.AddScoped<IBookingInvoiceRepository, BookingInvoiceRepository>();
         services.AddScoped<IBookingInvoiceService, BookingInvoiceService>();
         services.AddHttpClient<IPaymentService, PaymentService>();
-        services.AddOptions<GoogleMapsOptions>().Bind(configuration.GetSection("GoogleMaps"));
         services.AddHttpClient<IGoogleMapsService, GoogleMapsService>();
         services.AddScoped<IBookingRouteRepository, BookingRouteRepository>();
         services.AddSingleton<IOtpNotifier, NullOtpNotifier>();

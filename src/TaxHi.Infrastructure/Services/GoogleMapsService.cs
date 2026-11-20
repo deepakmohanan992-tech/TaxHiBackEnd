@@ -4,8 +4,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using TaxHi.Application.Models;
 using TaxHi.Application.Models.Maps;
 using TaxHi.Application.Services;
@@ -28,18 +28,24 @@ public sealed partial class GoogleMapsService : IGoogleMapsService
     private static partial Regex SessionTokenPattern();
 
     private readonly HttpClient _client;
-    private readonly GoogleMapsOptions _options;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<GoogleMapsService> _logger;
 
-    public GoogleMapsService(HttpClient client, IOptions<GoogleMapsOptions> options, ILogger<GoogleMapsService> logger)
+    public GoogleMapsService(HttpClient client, IConfiguration configuration, ILogger<GoogleMapsService> logger)
     {
-        _options = options.Value;
+        _configuration = configuration;
         _logger = logger;
         _client = client;
-        _client.Timeout = TimeSpan.FromSeconds(_options.HttpTimeoutSeconds > 0 ? _options.HttpTimeoutSeconds : 10);
+        _client.Timeout = TimeSpan.FromSeconds(
+            int.TryParse(_configuration["GoogleMaps:HttpTimeoutSeconds"], out var t) && t > 0 ? t : 10);
     }
 
-    private bool IsConfigured => !string.IsNullOrWhiteSpace(_options.ApiKey);
+    // Read from appsettings.json / environment (GoogleMaps__ApiKey) on use.
+    private string ApiKey => _configuration["GoogleMaps:ApiKey"] ?? string.Empty;
+    private string PlacesBaseUrl => _configuration["GoogleMaps:PlacesBaseUrl"] is { Length: > 0 } p ? p : "https://places.googleapis.com/";
+    private string RoutesBaseUrl => _configuration["GoogleMaps:RoutesBaseUrl"] is { Length: > 0 } r ? r : "https://routes.googleapis.com/";
+
+    private bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKey);
 
     // ------------------------------------------------------------------ autocomplete
 
@@ -61,7 +67,7 @@ public sealed partial class GoogleMapsService : IGoogleMapsService
             ["sessionToken"] = string.IsNullOrWhiteSpace(request.SessionToken) ? null : request.SessionToken
         };
 
-        using var message = BuildRequest(HttpMethod.Post, Url(_options.PlacesBaseUrl, "v1/places:autocomplete"),
+        using var message = BuildRequest(HttpMethod.Post, Url(PlacesBaseUrl, "v1/places:autocomplete"),
             "suggestions.placePrediction.placeId,suggestions.placePrediction.text.text");
         message.Content = JsonContent.Create(body.Where(kv => kv.Value is not null).ToDictionary(kv => kv.Key, kv => kv.Value));
 
@@ -97,7 +103,7 @@ public sealed partial class GoogleMapsService : IGoogleMapsService
         if (!IsConfigured)
             return NotConfigured<PlaceDetailsDto>();
 
-        var url = Url(_options.PlacesBaseUrl, $"v1/places/{placeId}");
+        var url = Url(PlacesBaseUrl, $"v1/places/{placeId}");
         if (!string.IsNullOrWhiteSpace(sessionToken)) url += "?sessionToken=" + Uri.EscapeDataString(sessionToken);
 
         using var message = BuildRequest(HttpMethod.Get, url, "id,formattedAddress,location");
@@ -139,7 +145,7 @@ public sealed partial class GoogleMapsService : IGoogleMapsService
             units = "METRIC"
         };
 
-        using var message = BuildRequest(HttpMethod.Post, Url(_options.RoutesBaseUrl, "directions/v2:computeRoutes"),
+        using var message = BuildRequest(HttpMethod.Post, Url(RoutesBaseUrl, "directions/v2:computeRoutes"),
             "routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline");
         message.Content = JsonContent.Create(body);
 
@@ -213,7 +219,7 @@ public sealed partial class GoogleMapsService : IGoogleMapsService
     private HttpRequestMessage BuildRequest(HttpMethod method, string url, string fieldMask)
     {
         var message = new HttpRequestMessage(method, url);
-        message.Headers.Add("X-Goog-Api-Key", _options.ApiKey);
+        message.Headers.Add("X-Goog-Api-Key", ApiKey);
         message.Headers.Add("X-Goog-FieldMask", fieldMask);
         return message;
     }
