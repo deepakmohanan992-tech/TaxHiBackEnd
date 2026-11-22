@@ -168,7 +168,7 @@ DbType.DateTime2
             "USP_GetUserBookings",
             parameters,
             commandType: CommandType.StoredProcedure,
-            commandTimeout: 30,
+            commandTimeout: 300,
             cancellationToken: cancellationToken);
 
         using var resultSets = await connection.QueryMultipleAsync(command);

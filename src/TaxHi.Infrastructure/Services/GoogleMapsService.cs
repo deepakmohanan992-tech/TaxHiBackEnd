@@ -209,8 +209,8 @@ public sealed partial class GoogleMapsService : IGoogleMapsService
             BaseFare = baseFare,
             GST = gst,
             FullPay = fullPay,
-            PartPay = partPay
-            //EncodedPolyline = polyline
+            PartPay = partPay,
+            EncodedPolyline = polyline
         }, "Route calculated successfully.");
     }
 

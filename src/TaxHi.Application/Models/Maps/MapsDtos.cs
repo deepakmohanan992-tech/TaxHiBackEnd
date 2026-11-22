@@ -38,7 +38,7 @@ public sealed class RouteResultDto
     /// <summary>Google-calculated road distance. Informational only; never used for billing.</summary>
     public decimal GoogleDistanceKm { get; set; }
     public int GoogleDurationMinutes { get; set; }
-    //public string EncodedPolyline { get; set; } = string.Empty;
+    public string EncodedPolyline { get; set; } = string.Empty;
     public decimal PartPay { get; init; }
     public decimal FullPay { get; init; }
     public decimal BaseFare { get; init; }
