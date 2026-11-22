@@ -47,16 +47,16 @@ public sealed class BookingController(IBookingService bookingService, IBookingIn
 
     private int CurrentUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
 
-    // Returns the signed-in user's own upcoming bookings, matched on the mobile number in their token.
+    // Returns the signed-in user's own bookings for one tab (Upcoming / Current / History), matched on the user id in their token.
     [Authorize]
-    [HttpGet("UpcomingBookings")]
-    public async Task<ActionResult<CommonResponse<PagedResult<UpcomingBookingDto>>>> GetUpcomingBookings(
+    [HttpGet("GetBookings")]
+    public async Task<ActionResult<CommonResponse<BookingListResponseDto>>> GetBookings(
+        [FromQuery] string mode = "Upcoming",
         [FromQuery] int currentPage = 1,
         [FromQuery] int pageSize = 10,
         CancellationToken cancellationToken = default)
     {
-        var mobileNumber = User.FindFirst(ClaimTypes.MobilePhone)?.Value;
-        var response = await bookingService.GetUpcomingBookingsAsync(mobileNumber, currentPage, pageSize, cancellationToken);
+        var response = await bookingService.GetBookingsAsync(CurrentUserId(), mode, currentPage, pageSize, cancellationToken);
         return StatusCode(response.StatusCode, response);
     }
 }

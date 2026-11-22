@@ -9,9 +9,10 @@ public interface IBookingService
         SaveBookingPaymentRequest request,int userId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Upcoming bookings of the customer with the given phone number, soonest pickup first.</summary>
-    Task<CommonResponse<PagedResult<UpcomingBookingDto>>> GetUpcomingBookingsAsync(
-        string? phoneNumber,
+    /// <summary>Bookings of the signed-in user for one tab (Upcoming / Current / History), with pagination and tab counts.</summary>
+    Task<CommonResponse<BookingListResponseDto>> GetBookingsAsync(
+        int userId,
+        string? mode,
         int currentPage,
         int pageSize,
         CancellationToken cancellationToken = default);

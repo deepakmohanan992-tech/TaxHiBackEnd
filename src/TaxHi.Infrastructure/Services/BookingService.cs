@@ -90,30 +90,37 @@ public sealed partial class BookingService(
         }
     }
 
-    public async Task<CommonResponse<PagedResult<UpcomingBookingDto>>> GetUpcomingBookingsAsync(
-        string? phoneNumber,
+    private static readonly string[] BookingModes = ["Upcoming", "Current", "History"];
+
+    public async Task<CommonResponse<BookingListResponseDto>> GetBookingsAsync(
+        int userId,
+        string? mode,
         int currentPage,
         int pageSize,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(phoneNumber))
-            return ResponseFactory.Failure<PagedResult<UpcomingBookingDto>>(StatusCodes.Status401Unauthorized, "Authentication is required.", "UNAUTHORIZED");
+        if (userId <= 0)
+            return ResponseFactory.Failure<BookingListResponseDto>(StatusCodes.Status401Unauthorized, "Authentication is required.", "UNAUTHORIZED");
+
+        var normalizedMode = BookingModes.FirstOrDefault(m => string.Equals(m, mode?.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (normalizedMode is null)
+            return ResponseFactory.Failure<BookingListResponseDto>(StatusCodes.Status400BadRequest, "Mode must be Upcoming, Current or History.", "INVALID_MODE");
         if (currentPage < 1)
-            return ResponseFactory.Failure<PagedResult<UpcomingBookingDto>>(StatusCodes.Status400BadRequest, "CurrentPage must be greater than zero.", "INVALID_CURRENT_PAGE");
+            return ResponseFactory.Failure<BookingListResponseDto>(StatusCodes.Status400BadRequest, "CurrentPage must be greater than zero.", "INVALID_CURRENT_PAGE");
         if (pageSize is < 1 or > 100)
-            return ResponseFactory.Failure<PagedResult<UpcomingBookingDto>>(StatusCodes.Status400BadRequest, "PageSize must be between 1 and 100.", "INVALID_PAGE_SIZE");
+            return ResponseFactory.Failure<BookingListResponseDto>(StatusCodes.Status400BadRequest, "PageSize must be between 1 and 100.", "INVALID_PAGE_SIZE");
 
         try
         {
-            var bookings = await repository.GetUpcomingBookingsAsync(MobileNumberHelper.NormalizeMobile(phoneNumber), currentPage, pageSize, cancellationToken);
-            return ResponseFactory.Success(bookings, bookings.TotalItems == 0
-                ? "No upcoming bookings found."
-                : "Upcoming bookings retrieved successfully.");
+            var bookings = await repository.GetBookingsAsync(userId, normalizedMode, currentPage, pageSize, cancellationToken);
+            return ResponseFactory.Success(bookings, bookings.TotalRecords == 0
+                ? $"No {normalizedMode.ToLowerInvariant()} bookings found."
+                : $"{normalizedMode} bookings retrieved successfully.");
         }
         catch (SqlException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            logger.LogError(ex, "Database error while fetching upcoming bookings (SQL error {Number}).", ex.Number);
-            return ResponseFactory.Failure<PagedResult<UpcomingBookingDto>>(StatusCodes.Status500InternalServerError, "Unable to fetch upcoming bookings right now. Please try again.", "UPCOMING_BOOKINGS_FETCH_FAILED");
+            logger.LogError(ex, "Database error while fetching bookings (SQL error {Number}).", ex.Number);
+            return ResponseFactory.Failure<BookingListResponseDto>(StatusCodes.Status500InternalServerError, "Unable to fetch bookings right now. Please try again.", "BOOKINGS_FETCH_FAILED");
         }
     }
 

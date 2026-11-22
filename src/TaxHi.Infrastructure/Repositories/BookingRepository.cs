@@ -1,12 +1,13 @@
-using System.Data;
-using System.Xml.Linq;
 using Dapper;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using TaxHi.Application.Services;
+using System.Data;
+using System.Xml.Linq;
 using TaxHi.Application.Models;
 using TaxHi.Application.Models.Booking;
 using TaxHi.Application.Repositories;
+using TaxHi.Application.Services;
 using TaxHi.Infrastructure.Models;
 
 namespace TaxHi.Infrastructure.Repositories;
@@ -166,37 +167,59 @@ public sealed class BookingRepository(IDbConnection connection, IOptions<Booking
     }
 
 
-    public async Task<PagedResult<UpcomingBookingDto>> GetUpcomingBookingsAsync(
-        string phoneNumber,
-        int currentPage,
-        int pageSize,
-        CancellationToken cancellationToken = default)
+    public async Task<BookingListResponseDto> GetBookingsAsync(
+    int userId,
+    string mode,
+    int currentPage,
+    int pageSize,
+    CancellationToken cancellationToken = default)
     {
-        var parameters = new DynamicParameters();
-        parameters.Add("PhoneNumber", phoneNumber, DbType.AnsiString, size: 20); // Bookings.PhoneNumber is VARCHAR(20)
-        parameters.Add("CurrentPage", currentPage, DbType.Int32);
-        parameters.Add("PageSize", pageSize, DbType.Int32);
-        // PickupDateTime is stored and validated against server-local time (see BookingService.Validate).
-        parameters.Add("CurrentDateTime", DateTime.Now, DbType.DateTime2);
-
-        var command = new CommandDefinition(
-            "USP_GetUpcomingBookings",
-            parameters,
-            commandType: CommandType.StoredProcedure,
-            cancellationToken: cancellationToken);
-
-        using var resultSets = await connection.QueryMultipleAsync(command);
-        var rows = (await resultSets.ReadAsync<UpcomingBookingDto>()).AsList();
-        var pagination = await resultSets.ReadSingleOrDefaultAsync<PaginationMetadata>();
-
-        return new PagedResult<UpcomingBookingDto>
+        try
         {
-            Items = rows,
-            CurrentPage = pagination?.CurrentPage ?? currentPage,
-            PageSize = pagination?.PageSize ?? pageSize,
-            TotalItems = pagination?.TotalRecords ?? rows.Count,
-            TotalPages = pagination?.TotalPages ?? (rows.Count == 0 ? 0 : 1)
-        };
+            var parameters = new DynamicParameters();
+            parameters.Add("UserId", userId, DbType.Int32);
+            parameters.Add("Mode", mode, DbType.AnsiString, size: 20);
+            parameters.Add("CurrentPage", currentPage, DbType.Int32);
+            parameters.Add("PageSize", pageSize, DbType.Int32);
+
+            // PickupDateTime is stored and validated against server-local time.
+            parameters.Add("CurrentDateTime", DateTime.Now, DbType.DateTime2);
+
+            var command = new CommandDefinition(
+                "USP_GetUserBookings",
+                parameters,
+                commandType: CommandType.StoredProcedure,
+                commandTimeout: 30,
+                cancellationToken: cancellationToken);
+
+            using var resultSets = await connection.QueryMultipleAsync(command);
+
+            var rows = (await resultSets.ReadAsync<BookingDto>()).AsList();
+            var meta = await resultSets.ReadSingleOrDefaultAsync<BookingListMetadata>();
+            var counts = await resultSets.ReadSingleOrDefaultAsync<BookingTabCounts>();
+
+            return new BookingListResponseDto
+            {
+                Mode = meta?.Mode ?? mode,
+                CurrentPage = meta?.CurrentPage ?? currentPage,
+                PageSize = meta?.PageSize ?? pageSize,
+                TotalRecords = meta?.TotalRecords ?? rows.Count,
+                TotalPages = meta?.TotalPages ?? (rows.Count == 0 ? 0 : 1),
+                UpcomingCount = counts?.UpcomingCount ?? 0,
+                CurrentCount = counts?.CurrentCount ?? 0,
+                HistoryCount = counts?.HistoryCount ?? 0,
+                Items = rows
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+
+            throw;
+        }
     }
 
     // ---------------------------------------------------------------- Razorpay payment state (database/RazorpayPayment.sql)

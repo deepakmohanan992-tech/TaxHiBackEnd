@@ -328,7 +328,7 @@ public class PaymentServiceTests
     {
         public CommonResponse<SaveBookingPaymentResponse> Result = new() { Success = true, StatusCode = 200, Data = new SaveBookingPaymentResponse { BookingId = 1 } };
         public Task<CommonResponse<SaveBookingPaymentResponse>> SaveBookingPaymentAsync(SaveBookingPaymentRequest request, int userId, CancellationToken cancellationToken = default) => Task.FromResult(Result);
-        public Task<CommonResponse<PagedResult<UpcomingBookingDto>>> GetUpcomingBookingsAsync(string? phoneNumber, int currentPage, int pageSize, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<CommonResponse<BookingListResponseDto>> GetBookingsAsync(int userId, string? mode, int currentPage, int pageSize, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
     private sealed class FakeInvoices : IBookingInvoiceService
@@ -363,6 +363,6 @@ public class PaymentServiceTests
         { ConfirmCalls++; LastAmountPaise = amountPaise; LastEventId = eventId; LastMethod = paymentMethod; return Task.FromResult(Confirm); }
         public Task<GatewayPaymentResult> FailGatewayPaymentAsync(string gatewayOrderId, string? gatewayPaymentId, string? reason, string? eventId, string? eventType, CancellationToken cancellationToken = default) { FailCalls++; return Task.FromResult(Fail); }
         public Task<SaveBookingPaymentResponse> SaveBookingPaymentAsync(SaveBookingPaymentRequest request, int userId, BookingAmounts amounts, string bookingNo, string tripCode, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<PagedResult<UpcomingBookingDto>> GetUpcomingBookingsAsync(string phoneNumber, int currentPage, int pageSize, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<BookingListResponseDto> GetBookingsAsync(int userId, string mode, int currentPage, int pageSize, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 }

@@ -12,8 +12,9 @@ public interface IBookingRepository
         string tripCode,
         CancellationToken cancellationToken = default);
 
-    Task<PagedResult<UpcomingBookingDto>> GetUpcomingBookingsAsync(
-        string phoneNumber,
+    Task<BookingListResponseDto> GetBookingsAsync(
+        int userId,
+        string mode,
         int currentPage,
         int pageSize,
         CancellationToken cancellationToken = default);

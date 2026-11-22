@@ -87,74 +87,51 @@ public sealed class SaveBookingPaymentResponse
 /// <summary>Server-computed, rounded amounts passed to the repository.</summary>
 public sealed record BookingAmounts(decimal TotalFare, decimal PayableNowAmount, decimal BalancePayableAmount);
 
-/// <summary>One upcoming booking with its payment summary, as returned by USP_GetUpcomingBookings.</summary>
-public sealed class UpcomingBookingDto
+/// <summary>One booking card, as returned by USP_GetUserBookings.</summary>
+public sealed class BookingDto
 {
     public long BookingId { get; set; }
     public string? BookingNo { get; set; }
-    public string? Name { get; set; }
-    public string? PhoneNumber { get; set; }
-    public string? Email { get; set; }
-    public string? AlternateEmail { get; set; }
-    public bool HasGST { get; set; }
-    public string? GSTNumber { get; set; }
-    public string? GSTCompanyName { get; set; }
+    public string BookingStatus { get; set; } = string.Empty;
 
-    // Trip
+    // Date & time
     public DateTime PickupDateTime { get; set; }
     public DateTime? DropDate { get; set; }
+
+    // Trip & route
+    public string? TripType { get; set; }
+    public string? Route { get; set; }
     public string? PickupLocation { get; set; }
     public string? DropLocation { get; set; }
-    public int? FromCityId { get; set; }
-    public int? ToCityId { get; set; }
-    public string? Route { get; set; }
-    public string? TripType { get; set; }
 
     // Vehicle
-    public int? VendorId { get; set; }
     public int? VehicleId { get; set; }
     public int? VehicleDetailsId { get; set; }
-    public int? VehicleCategoryId { get; set; }
-    public int? VehicleBrandId { get; set; }
     public string? VehicleName { get; set; }
-    public string? FuelType { get; set; }
 
-    // Fare
-    public string? PaymentOption { get; set; }
-    public string? CouponCode { get; set; }
-    public decimal DiscountAmount { get; set; }
-    public decimal BaseFare { get; set; }
-    public decimal DriverAllowance { get; set; }
-    public decimal AddOnsTotalAmount { get; set; }
-    public decimal GSTAmount { get; set; }
-    /// <summary>Booking amount.</summary>
-    public decimal TotalFare { get; set; }
-    public decimal PayableNowAmount { get; set; }
-    public decimal BalancePayableAmount { get; set; }
-
-    // Booking state: Pending | Confirmed (Cancelled, Failed and expired holds are never returned)
-    public string BookingStatus { get; set; } = string.Empty;
-    public DateTime? HoldExpiresAtUtc { get; set; }
-    public DateTime CreatedDateUtc { get; set; }
-    public DateTime ModifiedDateUtc { get; set; }
-
-    // Payment (latest payment attempt; null/defaults when the booking has no payment row)
-    public long? BookingPaymentId { get; set; }
-    public string? PaymentGateway { get; set; }
-    public string? PaymentGatewayOrderId { get; set; }
-    public string? PaymentGatewayPaymentId { get; set; }
-    public string? TransactionReference { get; set; }
-    /// <summary>Status of the latest payment attempt: Pending | Success | Failed | Refunded.</summary>
-    public string PaymentStatus { get; set; } = "Pending";
-    /// <summary>Amount of the latest payment attempt, whatever its status.</summary>
-    public decimal PaymentAmount { get; set; }
-    public string? PaymentMethod { get; set; }
-    /// <summary>Advance paid: the sum of successful payments only.</summary>
+    // Fare & payment summary
+    public decimal BookingAmount { get; set; }
+    /// <summary>Sum of successful payments only.</summary>
     public decimal AdvancePaidAmount { get; set; }
-    /// <summary>TotalFare minus AdvancePaidAmount.</summary>
     public decimal BalanceDueAmount { get; set; }
-    /// <summary>When the most recent successful payment was made; null if nothing has been paid yet.</summary>
-    public DateTime? PaidDateUtc { get; set; }
+
+    // UI action flags
+    public bool CanCancel { get; set; }
+    public bool CanEdit { get; set; }
+}
+
+/// <summary>Paginated bookings of one tab plus pagination metadata and the Upcoming/Current/History tab counts.</summary>
+public sealed class BookingListResponseDto
+{
+    public string Mode { get; set; } = string.Empty;
+    public int CurrentPage { get; set; }
+    public int PageSize { get; set; }
+    public int TotalRecords { get; set; }
+    public int TotalPages { get; set; }
+    public int UpcomingCount { get; set; }
+    public int CurrentCount { get; set; }
+    public int HistoryCount { get; set; }
+    public IReadOnlyList<BookingDto> Items { get; set; } = [];
 }
 
 // ------------------------------------------------------------------ Razorpay payment flow
