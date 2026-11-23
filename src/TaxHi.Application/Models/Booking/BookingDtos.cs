@@ -71,7 +71,7 @@ public sealed class SaveBookingPaymentResponse
     public long BookingPaymentId { get; set; }
     public string BookingStatus { get; set; } = "Pending";
     public string PaymentStatus { get; set; } = "Pending";
-    public DateTime? HoldExpiresAtUtc { get; set; }
+    public DateTime? HoldExpiresAt { get; set; }
     /// <summary>True when this ClientRequestId was already processed and the original booking is returned.</summary>
     public bool IsDuplicateRequest { get; set; }
     public decimal TotalFare { get; set; }
@@ -147,7 +147,7 @@ public sealed class RazorpayOrderResponse
     /// <summary>The booking number (also used as the Razorpay receipt).</summary>
     public string BookingReference { get; set; } = string.Empty;
     public long BookingId { get; set; }
-    public DateTime? HoldExpiresAtUtc { get; set; }
+    public DateTime? HoldExpiresAt { get; set; }
 }
 
 public sealed class VerifyRazorpayPaymentRequest
@@ -178,7 +178,7 @@ public sealed class BookingPaymentContext
     public string BookingNo { get; set; } = string.Empty;
     public int UserId { get; set; }
     public string BookingStatus { get; set; } = string.Empty;
-    public DateTime? HoldExpiresAtUtc { get; set; }
+    public DateTime? HoldExpiresAt { get; set; }
     public decimal TotalFare { get; set; }
     public decimal BalancePayableAmount { get; set; }
     public long BookingPaymentId { get; set; }

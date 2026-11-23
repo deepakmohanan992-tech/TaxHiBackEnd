@@ -8,7 +8,7 @@ public sealed class BookingInvoiceDto
     public long VehicleBookingMasterId { get; set; }
     public long UserId { get; set; }
     public string BookingStatus { get; set; } = string.Empty;
-    public DateTime CreatedDateUtc { get; set; }
+    public DateTime CreatedDate { get; set; }
 
     // Customer
     public string? CustomerName { get; set; }
@@ -57,7 +57,7 @@ public sealed class BookingInvoiceDto
 
     // Payment (AmountPaid counts successful payments only)
     public decimal AmountPaid { get; set; }
-    public DateTime? PaidDateUtc { get; set; }
+    public DateTime? PaidDate { get; set; }
     public decimal OutstandingAmount { get; set; }
     public string? PaymentStatus { get; set; }
     public string? PaymentMethod { get; set; }
@@ -87,8 +87,8 @@ public sealed class BookingInvoicePaymentDto
     public string? PaymentMethod { get; set; }
     public decimal PaymentAmount { get; set; }
     public string? TransactionReference { get; set; }
-    public DateTime? PaidDateUtc { get; set; }
-    public DateTime CreatedDateUtc { get; set; }
+    public DateTime? PaidDate { get; set; }
+    public DateTime CreatedDate { get; set; }
 }
 
 /// <summary>Stored invoice location for a booking, from USP_GetBookingInvoiceFile.</summary>
@@ -97,7 +97,7 @@ public sealed class BookingInvoiceFileInfo
     public long BookingId { get; set; }
     public string BookingNo { get; set; } = string.Empty;
     public string? InvoiceFilePath { get; set; }
-    public DateTime? InvoiceGeneratedAtUtc { get; set; }
+    public DateTime? InvoiceGeneratedAt { get; set; }
 }
 
 /// <summary>Outcome of an invoice generation attempt. A failed attempt never affects the booking itself.</summary>

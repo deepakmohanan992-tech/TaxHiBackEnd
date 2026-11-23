@@ -29,14 +29,14 @@ public sealed class AuthenticationService(
         var otp = OtpService.CreateNumericCode(6);
         var result = await repository.CreateOtpAsync(
             MobileNumberHelper.NormalizeMobile(request.MobileNumber), "Login", TokenHelper.Hash(otp, settings.JwtSigningKey),
-            DateTime.UtcNow.AddMinutes(settings.OtpExpiryMinutes), settings.OtpMaxAttempts,
+            DateTime.Now.AddMinutes(settings.OtpExpiryMinutes), settings.OtpMaxAttempts,
             settings.OtpResendCooldownSeconds, cancellationToken);
 
         if (!result.Accepted)
             return ResponseFactory.Failure<object>(StatusCodes.Status429TooManyRequests, "OTP resend is temporarily unavailable.", "OTP_RATE_LIMITED", result.RetryAfterSeconds);
 
         await otpNotifier.SendAsync(MobileNumberHelper.NormalizeMobile(request.MobileNumber), "Login", otp, cancellationToken);
-        return ResponseFactory.Success<object>(new { ExpiresUtc = result.ExpiresUtc }, "OTP sent successfully.");
+        return ResponseFactory.Success<object>(new { Expires = result.Expires }, "OTP sent successfully.");
     }
 
     public async Task<CommonResponse<TokenResponseDto>> VerifyOtpAsync(VerifyOtpRequest request, CancellationToken cancellationToken = default)
@@ -170,13 +170,13 @@ public sealed class AuthenticationService(
         var otp = OtpService.CreateNumericCode(6);
         var purpose = AuthConstants.GuestPurpose(request.BookingReference);
         var result = await repository.CreateOtpAsync(MobileNumberHelper.NormalizeMobile(request.MobileNumber), purpose, TokenHelper.Hash(otp, settings.JwtSigningKey),
-            DateTime.UtcNow.AddMinutes(settings.OtpExpiryMinutes), settings.OtpMaxAttempts,
+            DateTime.Now.AddMinutes(settings.OtpExpiryMinutes), settings.OtpMaxAttempts,
             settings.OtpResendCooldownSeconds, cancellationToken);
         if (!result.Accepted)
             return ResponseFactory.Failure<object>(StatusCodes.Status429TooManyRequests, "OTP resend is temporarily unavailable.", "OTP_RATE_LIMITED", result.RetryAfterSeconds);
 
         await otpNotifier.SendAsync(MobileNumberHelper.NormalizeMobile(request.MobileNumber), purpose, otp, cancellationToken);
-        return ResponseFactory.Success<object>(new { ExpiresUtc = result.ExpiresUtc }, "Cancellation OTP sent successfully.");
+        return ResponseFactory.Success<object>(new { Expires = result.Expires }, "Cancellation OTP sent successfully.");
     }
 
     public async Task<CommonResponse<object>> VerifyGuestCancellationOtpAsync(VerifyGuestCancellationOtpRequest request, CancellationToken cancellationToken = default)
@@ -217,12 +217,12 @@ public sealed class AuthenticationService(
         if (booking is null)
             return ResponseFactory.Failure<GuestBookingAccessDto>(StatusCodes.Status404NotFound, "Booking was not found.", "BOOKING_NOT_FOUND");
 
-        return ResponseFactory.Success(new GuestBookingAccessDto { BookingReference = booking.BookingReference, BookingDateUtc = booking.BookingDateUtc, Status = booking.Status }, "Booking access validated.");
+        return ResponseFactory.Success(new GuestBookingAccessDto { BookingReference = booking.BookingReference, BookingDate = booking.BookingDate, Status = booking.Status }, "Booking access validated.");
     }
 
     private async Task<TokenResponseDto> IssueTokensAsync(UserInfoDto user, CancellationToken cancellationToken)
     {
-        var now = DateTime.UtcNow;
+        var now = DateTime.Now;
         var expires = now.AddMinutes(settings.AccessTokenMinutes);
         var claims = new List<Claim>
         {
@@ -242,7 +242,7 @@ public sealed class AuthenticationService(
             signingCredentials: new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(settings.JwtSigningKey)), SecurityAlgorithms.HmacSha256)));
         var refreshToken = TokenHelper.CreateOpaqueToken();
         await repository.SaveRefreshTokenAsync(user.UserId, TokenHelper.Hash(refreshToken, settings.JwtSigningKey), now.AddDays(settings.RefreshTokenDays), cancellationToken);
-        return new TokenResponseDto { AccessToken = accessToken, RefreshToken = refreshToken, AccessTokenExpiresUtc = expires, User = user };
+        return new TokenResponseDto { AccessToken = accessToken, RefreshToken = refreshToken, AccessTokenExpires = expires, User = user };
     }
 
 }

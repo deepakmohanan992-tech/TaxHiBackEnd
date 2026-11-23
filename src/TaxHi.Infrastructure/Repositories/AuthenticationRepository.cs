@@ -11,14 +11,14 @@ public sealed class AuthenticationRepository(IDbConnection connection) : IAuthen
         string mobileNumber,
         string purpose,
         string otpHash,
-        DateTime expiresUtc,
+        DateTime expires,
         int maxAttempts,
         int cooldownSeconds,
         CancellationToken cancellationToken = default)
     {
         var command = new CommandDefinition(
             "USP_CreateOTP",
-            new { MobileNumber = mobileNumber, Purpose = purpose, OtpHash = otpHash, ExpiresUtc = expiresUtc, MaxAttempts = maxAttempts, CooldownSeconds = cooldownSeconds },
+            new { MobileNumber = mobileNumber, Purpose = purpose, OtpHash = otpHash, Expires = expires, MaxAttempts = maxAttempts, CooldownSeconds = cooldownSeconds },
             commandType: CommandType.StoredProcedure,
             cancellationToken: cancellationToken);
         return await connection.QuerySingleAsync<OtpCreateResult>(command);
@@ -79,11 +79,11 @@ public sealed class AuthenticationRepository(IDbConnection connection) : IAuthen
         return await connection.QuerySingleOrDefaultAsync<UserInfoDto>(command);
     }
 
-    public async Task SaveRefreshTokenAsync(long userId, string tokenHash, DateTime expiresUtc, CancellationToken cancellationToken = default)
+    public async Task SaveRefreshTokenAsync(long userId, string tokenHash, DateTime expires, CancellationToken cancellationToken = default)
     {
         var command = new CommandDefinition(
             "USP_SaveRefreshToken",
-            new { UserId = userId, TokenHash = tokenHash, ExpiresUtc = expiresUtc },
+            new { UserId = userId, TokenHash = tokenHash, Expires = expires },
             commandType: CommandType.StoredProcedure,
             commandTimeout: 120,
             cancellationToken: cancellationToken);
@@ -131,11 +131,11 @@ public sealed class AuthenticationRepository(IDbConnection connection) : IAuthen
         return await connection.QuerySingleOrDefaultAsync<GuestBookingRecord>(command);
     }
 
-    public async Task SaveBookingAccessTokenAsync(long bookingId, string tokenHash, DateTime expiresUtc, CancellationToken cancellationToken = default)
+    public async Task SaveBookingAccessTokenAsync(long bookingId, string tokenHash, DateTime expires, CancellationToken cancellationToken = default)
     {
         var command = new CommandDefinition(
             "USP_CreateBookingAccessToken",
-            new { BookingId = bookingId, TokenHash = tokenHash, ExpiresUtc = expiresUtc },
+            new { BookingId = bookingId, TokenHash = tokenHash, Expires = expires },
             commandType: CommandType.StoredProcedure,
             cancellationToken: cancellationToken);
         await connection.ExecuteAsync(command);

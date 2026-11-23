@@ -75,21 +75,21 @@ public sealed class TokenResponseDto
 {
     public string AccessToken { get; init; } = string.Empty;
     public string RefreshToken { get; init; } = string.Empty;
-    public DateTime AccessTokenExpiresUtc { get; init; }
+    public DateTime AccessTokenExpires { get; init; }
     public UserInfoDto User { get; init; } = new();
 }
 
 public sealed class GuestBookingAccessDto
 {
     public string BookingReference { get; init; } = string.Empty;
-    public DateTime BookingDateUtc { get; init; }
+    public DateTime BookingDate { get; init; }
     public string Status { get; init; } = string.Empty;
 }
 
 public sealed class OtpCreateResult
 {
     public bool Accepted { get; init; }
-    public DateTime ExpiresUtc { get; init; }
+    public DateTime Expires { get; init; }
     public int RetryAfterSeconds { get; init; }
 }
 
@@ -116,7 +116,7 @@ public sealed class GuestBookingRecord
     public string BookingReference { get; init; } = string.Empty;
     public string MobileNumber { get; init; } = string.Empty;
     public string Status { get; init; } = string.Empty;
-    public DateTime BookingDateUtc { get; init; }
+    public DateTime BookingDate { get; init; }
 }
 
 public sealed class GuestCancellationResult

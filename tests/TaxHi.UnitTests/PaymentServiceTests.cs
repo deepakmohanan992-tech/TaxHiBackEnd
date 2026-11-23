@@ -104,7 +104,7 @@ public class PaymentServiceTests
     public async Task CreateOrder_ExpiredHold_Is409()
     {
         var f = new Fixture();
-        f.Repo.Context = Ctx(hold: DateTime.UtcNow.AddMinutes(-1));
+        f.Repo.Context = Ctx(hold: DateTime.Now.AddMinutes(-1));
         var response = await f.Service.CreateOrderAsync(new SaveBookingPaymentRequest(), 7);
         Assert.Equal("BOOKING_HOLD_EXPIRED", response.ErrorCode);
     }
@@ -320,7 +320,7 @@ public class PaymentServiceTests
         string paymentStatus = "Pending", string bookingStatus = "Pending", DateTime? hold = null) => new()
     {
         BookingId = 1, BookingNo = "T1126-1", UserId = userId, BookingStatus = bookingStatus,
-        HoldExpiresAtUtc = hold ?? DateTime.UtcNow.AddMinutes(10), PaymentAmount = paymentAmount, PaymentStatus = paymentStatus,
+        HoldExpiresAt = hold ?? DateTime.Now.AddMinutes(10), PaymentAmount = paymentAmount, PaymentStatus = paymentStatus,
         BookingPaymentId = 11, PaymentGatewayOrderId = orderId
     };
 

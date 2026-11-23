@@ -74,7 +74,7 @@ public sealed class PaymentService(
                 return ResponseFactory.Failure<RazorpayOrderResponse>(StatusCodes.Status409Conflict, "This booking is already paid.", "ALREADY_PAID");
             if (context.BookingStatus != "Pending")
                 return ResponseFactory.Failure<RazorpayOrderResponse>(StatusCodes.Status409Conflict, "This booking can no longer be paid for.", "BOOKING_NOT_PAYABLE");
-            if (context.HoldExpiresAtUtc is { } hold && hold <= DateTime.UtcNow)
+            if (context.HoldExpiresAt is { } hold && hold <= DateTime.Now)
                 return ResponseFactory.Failure<RazorpayOrderResponse>(StatusCodes.Status409Conflict,
                     "The payment window for this booking has expired. Please start a new booking.", "BOOKING_HOLD_EXPIRED");
 
@@ -99,7 +99,7 @@ public sealed class PaymentService(
                 Currency = Currency,
                 BookingReference = context.BookingNo,
                 BookingId = context.BookingId,
-                HoldExpiresAtUtc = context.HoldExpiresAtUtc
+                HoldExpiresAt = context.HoldExpiresAt
             }, "Payment order created successfully.");
         }
         catch (RazorpayApiException ex)

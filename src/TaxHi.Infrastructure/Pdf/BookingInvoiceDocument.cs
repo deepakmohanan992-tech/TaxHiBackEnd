@@ -137,7 +137,7 @@ public sealed class BookingInvoiceDocument(BookingInvoiceDto data, IConfiguratio
         container.Column(col =>
         {
             Row(col, "Booking ID", data.BookingNo, bold: true);
-            Row(col, "Booking Date", FormatDate(data.CreatedDateUtc.ToLocalTime()));
+            Row(col, "Booking Date", FormatDate(data.CreatedDate));
             Row(col, "Booking Status", data.BookingStatus);
             Row(col, "Pickup Location", data.PickupLocation);
             Row(col, "Drop Location", data.DropLocation);
@@ -214,8 +214,8 @@ public sealed class BookingInvoiceDocument(BookingInvoiceDto data, IConfiguratio
             if (IsPartPay && data.PayableNowAmount > 0)
                 AmountRow(col, "Advance Payable Now", data.PayableNowAmount);
             AmountRow(col, "Actual Amount Paid", ActualAmountPaid, bold: true);
-            if (data.PaidDateUtc is { } paidOn)
-                Row(col, "Paid On", FormatDateTime(paidOn.ToLocalTime()));
+            if (data.PaidDate is { } paidOn)
+                Row(col, "Paid On", FormatDateTime(paidOn));
             AmountRow(col, "Outstanding Balance", Outstanding, IsPartPay ? "(To be paid as per part-payment terms)" : null, bold: true);
         });
 
