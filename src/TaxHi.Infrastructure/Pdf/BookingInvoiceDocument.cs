@@ -22,7 +22,7 @@ public sealed class BookingInvoiceDocument(BookingInvoiceDto data, IConfiguratio
     private static readonly CultureInfo Money = BuildMoneyCulture();
 
     // Read straight from the "Invoice" section of appsettings.json; defaults only keep the PDF from breaking.
-    private string CompanyName => configuration["Invoice:CompanyName"] is { Length: > 0 } v ? v : "TaxHi";
+    //private string CompanyName => configuration["Invoice:CompanyName"] is { Length: > 0 } v ? v : "TaxHi";
     private string SupportEmail => configuration["Invoice:SupportEmail"] ?? string.Empty;
     private string SupportPhone => configuration["Invoice:SupportPhone"] ?? string.Empty;
     private string CompanyAddress => configuration["Invoice:CompanyAddress"] ?? string.Empty;
@@ -31,7 +31,7 @@ public sealed class BookingInvoiceDocument(BookingInvoiceDto data, IConfiguratio
     public DocumentMetadata GetMetadata() => new()
     {
         Title = $"Travel Itinerary {data.BookingNo}",
-        Author = CompanyName,
+        Author = data.VendorName,
         Subject = "Booking invoice"
     };
 
@@ -68,7 +68,7 @@ public sealed class BookingInvoiceDocument(BookingInvoiceDto data, IConfiguratio
         }
 
         container.Background(Brand).CornerRadius(5).PaddingHorizontal(22).PaddingVertical(5)
-            .Text(CompanyName).FontSize(20).Bold().FontColor(Colors.White);
+            .Text(data.VendorName).FontSize(20).Bold().FontColor(Colors.White);
     }
 
     private void ComposeFooter(IContainer container) =>
@@ -80,7 +80,7 @@ public sealed class BookingInvoiceDocument(BookingInvoiceDto data, IConfiguratio
                 row.RelativeItem().Column(c =>
                 {
                     c.Item().Text("In case of any queries reach out to us at:").FontSize(8).FontColor(Muted);
-                    c.Item().Text(SupportEmail).Bold().FontSize(9);
+                    c.Item().Text(data.VendorEmail).Bold().FontSize(9);
                     if (!string.IsNullOrWhiteSpace(SupportPhone))
                         c.Item().Text(SupportPhone).Bold().FontSize(9);
                 });
@@ -88,8 +88,8 @@ public sealed class BookingInvoiceDocument(BookingInvoiceDto data, IConfiguratio
                     .FontSize(8).FontColor(Muted);
                 row.RelativeItem().AlignRight().Column(c =>
                 {
-                    c.Item().AlignRight().Text(CompanyName).Bold().FontSize(10).FontColor(Brand);
-                    c.Item().AlignRight().Text(Website).FontSize(8).FontColor(Muted);
+                    c.Item().AlignRight().Text(data.VendorName).Bold().FontSize(10).FontColor(Brand);
+                    c.Item().AlignRight().Text(data.Website).FontSize(8).FontColor(Muted);
                     if (!string.IsNullOrWhiteSpace(CompanyAddress))
                         c.Item().AlignRight().Text(CompanyAddress).FontSize(7).FontColor(Muted);
                 });

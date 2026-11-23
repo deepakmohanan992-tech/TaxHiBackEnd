@@ -19,6 +19,13 @@ public sealed class BookingInvoiceDto
     public string? GSTNumber { get; set; }
     public string? GSTCompanyName { get; set; }
 
+    //Vendor
+    public int VendorId { get; set; }
+    public string VendorName { get; set; } = string.Empty;
+    public string Website { get; set; } = string.Empty;
+    public string VendorEmail { get; set; } = string.Empty;
+
+
     // Journey
     public string? TripType { get; set; }
     public string? Route { get; set; }
