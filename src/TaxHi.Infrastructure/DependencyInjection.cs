@@ -32,6 +32,8 @@ public static class DependencyInjection
         services.AddScoped<IBookingService, BookingService>();
         services.AddScoped<IBookingInvoiceRepository, BookingInvoiceRepository>();
         services.AddScoped<IBookingInvoiceService, BookingInvoiceService>();
+        services.AddScoped<IBookingEmailRepository, BookingEmailRepository>();
+        services.AddScoped<IBookingConfirmationEmailService, BookingConfirmationEmailService>();
         services.AddHttpClient<IPaymentService, PaymentService>();
         services.AddHttpClient<IGoogleMapsService, GoogleMapsService>();
         services.AddScoped<IBookingRouteRepository, BookingRouteRepository>();

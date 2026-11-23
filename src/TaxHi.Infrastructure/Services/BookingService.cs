@@ -18,6 +18,7 @@ public sealed partial class BookingService(
     IBookingRepository repository,
     IBookingInvoiceService invoiceService,
     IBookingRouteRepository routeRepository,
+    IBookingConfirmationEmailService emailService,
     ILogger<BookingService> logger) : IBookingService
 {
     private const decimal PartPayPercent = 25m;
@@ -54,6 +55,21 @@ public sealed partial class BookingService(
                 catch (SqlException ex) when (!cancellationToken.IsCancellationRequested)
                 {
                     logger.LogError(ex, "Could not save route details for booking {BookingId} (SQL error {Number}).", saved.BookingId, ex.Number);
+                }
+            }
+
+            // Confirmation email with the invoice attached. Skipped for duplicate/retried requests (already sent)
+            // and when no invoice was produced. Runs after the route details so the email can show the distance.
+            // It is isolated: no failure here may fail or roll back the completed booking.
+            if (invoice.InvoiceGenerated && !saved.IsDuplicateRequest)
+            {
+                try
+                {
+                    await emailService.SendBookingConfirmationAsync(saved.BookingId, userId, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Confirmation email step failed for booking {BookingId}.", saved.BookingId);
                 }
             }
 

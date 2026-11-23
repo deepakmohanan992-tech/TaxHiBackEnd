@@ -336,6 +336,7 @@ public class PaymentServiceTests
         public bool LastRegenerate;
         public Task<BookingInvoiceResult> EnsureInvoiceAsync(long bookingId, long userId, string? bookingNo = null, bool regenerate = false, CancellationToken cancellationToken = default)
         { LastRegenerate = regenerate; return Task.FromResult(new BookingInvoiceResult { BookingId = bookingId, InvoiceGenerated = true, InvoiceUrl = "/x" }); }
+        public string? ResolveExistingInvoicePath(string? storedRelativePath) => null;
         public Task<CommonResponse<BookingInvoiceResult>> RetryInvoiceAsync(long bookingId, long userId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<CommonResponse<BookingInvoiceFile>> GetInvoiceFileAsync(long bookingId, long userId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }

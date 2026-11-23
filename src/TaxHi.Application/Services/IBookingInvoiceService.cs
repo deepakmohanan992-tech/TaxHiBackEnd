@@ -14,6 +14,9 @@ public interface IBookingInvoiceService
         long bookingId, long userId, string? bookingNo = null, bool regenerate = false,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Maps a stored invoice path to its full file path; null when it is empty, outside the storage folder or missing.</summary>
+    string? ResolveExistingInvoicePath(string? storedRelativePath);
+
     /// <summary>Retry endpoint: 404 for unknown/foreign bookings, 500 when generation fails again.</summary>
     Task<CommonResponse<BookingInvoiceResult>> RetryInvoiceAsync(
         long bookingId, long userId, CancellationToken cancellationToken = default);

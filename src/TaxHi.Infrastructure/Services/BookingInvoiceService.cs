@@ -94,6 +94,9 @@ public sealed class BookingInvoiceService(
         }
     }
 
+    public string? ResolveExistingInvoicePath(string? storedRelativePath) =>
+        TryResolve(storedRelativePath, out var path) && File.Exists(path) ? path : null;
+
     public async Task<CommonResponse<BookingInvoiceResult>> RetryInvoiceAsync(
         long bookingId, long userId, CancellationToken cancellationToken = default)
     {
