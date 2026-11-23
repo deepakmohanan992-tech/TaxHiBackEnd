@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using TaxHi.Application.Models.Booking;
 using TaxHi.Application.Repositories;
 using TaxHi.Application.Services;
+using TaxHi.Infrastructure.Template;
 
 namespace TaxHi.Infrastructure.Services;
 

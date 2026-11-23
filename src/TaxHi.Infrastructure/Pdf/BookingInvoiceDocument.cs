@@ -167,7 +167,7 @@ public sealed class BookingInvoiceDocument(BookingInvoiceDto data, IConfiguratio
     private void ComposeVehicle(IContainer container) =>
         container.Column(col =>
         {
-            Row(col, "Car Type", string.IsNullOrWhiteSpace(data.VehicleName) ? null : $"{data.VehicleName} or similar", labelWidth: HalfLabelWidth);
+            Row(col, "Car Type", string.IsNullOrWhiteSpace(data.VehicleName) ? null : $"{data.VehicleName}", labelWidth: HalfLabelWidth);
             Row(col, "Fuel Type", data.FuelType, labelWidth: HalfLabelWidth);
             // Only present once the trip is assigned to a registered vehicle / driver.
             Row(col, "Registration No", data.RegistrationNo, skipIfEmpty: true, labelWidth: HalfLabelWidth);

@@ -25,13 +25,14 @@ public class PaymentServiceTests
         public FakeBookingService Bookings = new();
         public FakeHandler Http = new();
         public FakeInvoices Invoices = new();
+        public FakeEmails Emails = new();
         public PaymentService Service;
 
         public Fixture(string keyId = "rzp_test_abc")
         {
             Service = new PaymentService(
                 new HttpClient(Http) { BaseAddress = new Uri("https://api.razorpay.test/v1/") },
-                Bookings, Repo, Invoices,
+                Bookings, Repo, Invoices, Emails,
                 new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Razorpay:KeyId"] = keyId, ["Razorpay:KeySecret"] = KeySecret, ["Razorpay:WebhookSecret"] = WebhookSecret, ["Razorpay:ApiBaseUrl"] = "https://api.razorpay.test/v1/" }).Build(),
                 NullLogger<PaymentService>.Instance);
         }
@@ -188,6 +189,7 @@ public class PaymentServiceTests
         Assert.Equal("Confirmed", response.Data.BookingStatus);
         Assert.Null(f.Repo.LastAmountPaise);
         Assert.True(f.Invoices.LastRegenerate);
+        Assert.Equal(1, f.Emails.Sent);
     }
 
     [Fact]
@@ -201,6 +203,7 @@ public class PaymentServiceTests
         Assert.True(response.Success);
         Assert.True(response.Data!.AlreadyProcessed);
         Assert.False(f.Invoices.LastRegenerate);
+        Assert.Equal(0, f.Emails.Sent);
     }
 
     [Fact]
@@ -231,6 +234,7 @@ public class PaymentServiceTests
         f.Repo.Confirm = Result("RefundRequired");
         var response = await f.Service.VerifyPaymentAsync(Verify("order_1", "pay_1", Sign("order_1|pay_1", KeySecret)), 7);
         Assert.Equal("PAYMENT_RECEIVED_BOOKING_UNAVAILABLE", response.ErrorCode);
+        Assert.Equal(0, f.Emails.Sent);
     }
 
     // ------------------------------------------------------------ webhook
@@ -263,6 +267,7 @@ public class PaymentServiceTests
         Assert.Equal("evt_1", f.Repo.LastEventId);
         Assert.Equal("upi", f.Repo.LastMethod);
         Assert.True(f.Invoices.LastRegenerate);
+        Assert.Equal(1, f.Emails.Sent);
     }
 
     [Fact]
@@ -286,6 +291,7 @@ public class PaymentServiceTests
         Assert.True(response.Success);
         Assert.Equal(1, f.Repo.FailCalls);
         Assert.Equal(0, f.Repo.ConfirmCalls);
+        Assert.Equal(0, f.Emails.Sent);
     }
 
     [Fact]
@@ -329,6 +335,13 @@ public class PaymentServiceTests
         public CommonResponse<SaveBookingPaymentResponse> Result = new() { Success = true, StatusCode = 200, Data = new SaveBookingPaymentResponse { BookingId = 1 } };
         public Task<CommonResponse<SaveBookingPaymentResponse>> SaveBookingPaymentAsync(SaveBookingPaymentRequest request, int userId, CancellationToken cancellationToken = default) => Task.FromResult(Result);
         public Task<CommonResponse<BookingListResponseDto>> GetBookingsAsync(int userId, string? mode, int currentPage, int pageSize, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    }
+
+    private sealed class FakeEmails : IBookingConfirmationEmailService
+    {
+        public int Sent;
+        public Task SendBookingConfirmationAsync(long bookingId, long userId, CancellationToken cancellationToken = default)
+        { Sent++; return Task.CompletedTask; }
     }
 
     private sealed class FakeInvoices : IBookingInvoiceService

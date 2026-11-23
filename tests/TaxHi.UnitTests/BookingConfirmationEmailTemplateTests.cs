@@ -1,5 +1,5 @@
 using TaxHi.Application.Models.Booking;
-using TaxHi.Infrastructure.Services;
+using TaxHi.Infrastructure.Template;
 
 namespace TaxHi.UnitTests;
 

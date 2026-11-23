@@ -24,6 +24,7 @@ public sealed class PaymentService(
     IBookingService bookingService,
     IBookingRepository repository,
     IBookingInvoiceService invoiceService,
+    IBookingConfirmationEmailService confirmationEmailService,
     IConfiguration configuration,
     ILogger<PaymentService> logger) : IPaymentService
 {
@@ -155,6 +156,10 @@ public sealed class PaymentService(
                     var alreadyProcessed = result.Outcome == "AlreadyProcessed";
                     var invoice = await invoiceService.EnsureInvoiceAsync(
                         result.BookingId, result.UserId, result.BookingNo, regenerate: !alreadyProcessed, cancellationToken: cancellationToken);
+                    // Only the call that actually confirmed the payment sends the email; a repeat verify or the
+                    // webhook arriving later sees "AlreadyProcessed" and does not send a duplicate.
+                    if (!alreadyProcessed)
+                        await SendConfirmationEmailAsync(result.BookingId, result.UserId, cancellationToken);
                     return ResponseFactory.Success(new PaymentVerificationResponse
                     {
                         BookingId = result.BookingId,
@@ -258,7 +263,10 @@ public sealed class PaymentService(
                 orderId, paymentId, amountPaise, method.Length == 0 ? null : method, eventId, eventType, cancellationToken);
 
             if (result.Outcome == "Confirmed")
+            {
                 await invoiceService.EnsureInvoiceAsync(result.BookingId, result.UserId, result.BookingNo, regenerate: true, cancellationToken: cancellationToken);
+                await SendConfirmationEmailAsync(result.BookingId, result.UserId, cancellationToken);
+            }
 
             return Acknowledge(result, eventType, orderId);
         }
@@ -267,6 +275,19 @@ public sealed class PaymentService(
             // Non-2xx makes Razorpay redeliver; the event row rolled back with the transaction, so the retry reprocesses.
             logger.LogError(ex, "Database error while processing Razorpay webhook {EventType} for order {OrderId} (SQL error {Number}).", eventType, orderId, ex.Number);
             return ResponseFactory.Failure<string>(StatusCodes.Status500InternalServerError, "Webhook processing failed.", "WEBHOOK_PROCESSING_FAILED");
+        }
+    }
+
+    /// <summary>Best effort: the payment is already confirmed, so an email problem must never change the outcome.</summary>
+    private async Task SendConfirmationEmailAsync(long bookingId, long userId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await confirmationEmailService.SendBookingConfirmationAsync(bookingId, userId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Confirmation email step failed for booking {BookingId}.", bookingId);
         }
     }
 

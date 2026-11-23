@@ -3,7 +3,7 @@ using System.Net;
 using System.Text;
 using TaxHi.Application.Models.Booking;
 
-namespace TaxHi.Infrastructure.Services;
+namespace TaxHi.Infrastructure.Template;
 
 /// <summary>Branding and links that are configuration, not booking data.</summary>
 public sealed record BookingEmailBranding(
