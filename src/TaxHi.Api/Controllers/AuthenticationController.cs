@@ -5,13 +5,14 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using TaxHi.Application.Models;
 using TaxHi.Application.Models.Authentication;
+using TaxHi.Application.Models.Booking;
 using TaxHi.Application.Services;
 
 namespace TaxHi.Api.Controllers;
 
 [ApiController]
 [Route("api/Authentication")]
-public sealed class AuthenticationController(IAuthenticationService authenticationService) : ControllerBase
+public sealed class AuthenticationController(IAuthenticationService authenticationService, IBookingService bookingService) : ControllerBase
 {
     [AllowAnonymous]
     [EnableRateLimiting("otp")]
@@ -77,6 +78,17 @@ public sealed class AuthenticationController(IAuthenticationService authenticati
     [HttpPost("sendGuestCancellationOTP")]
     public Task<ActionResult<CommonResponse<object>>> SendGuestCancellationOtp([FromBody] GuestCancellationOtpRequest request, CancellationToken cancellationToken) =>
         Execute(authenticationService.SendGuestCancellationOtpAsync(request, cancellationToken));
+
+    // Registered users: step 1 of cancelling a booking. Sends the OTP to the account's mobile and returns it masked.
+    // Step 2 is POST api/Booking/CancelBooking, which verifies the OTP before cancelling.
+    [Authorize]
+    [EnableRateLimiting("otp")]
+    [HttpPost("sendCancellationOTP")]
+    public Task<ActionResult<CommonResponse<object>>> SendCancellationOtp([FromBody] SendCancellationOtpRequest request, CancellationToken cancellationToken)
+    {
+        var userId = int.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value, out var id) ? id : 0;
+        return Execute(bookingService.SendCancellationOtpAsync(request, userId, cancellationToken));
+    }
 
     [AllowAnonymous]
     [HttpPost("verifyGuestCancellationOTP")]

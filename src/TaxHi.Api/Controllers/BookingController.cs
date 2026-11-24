@@ -45,18 +45,7 @@ public sealed class BookingController(IBookingService bookingService, IBookingIn
         return StatusCode(response.StatusCode, response);
     }
 
-    // Step 1 of cancelling: sends an OTP to the account's registered mobile number.
-    [Authorize]
-    [HttpPost("SendCancellationOtp")]
-    public async Task<ActionResult<CommonResponse<object>>> SendCancellationOtp(
-        [FromBody] SendCancellationOtpRequest request,
-        CancellationToken cancellationToken)
-    {
-        var response = await bookingService.SendCancellationOtpAsync(request, CurrentUserId(), cancellationToken);
-        return StatusCode(response.StatusCode, response);
-    }
-
-    // Step 2: cancels the signed-in user's own booking. A valid OTP is mandatory; the user id comes from the token.
+    // Step 2 of cancelling (step 1, the OTP, is api/Authentication/sendCancellationOTP): cancels the signed-in user's own booking. A valid OTP is mandatory; the user id comes from the token.
     [Authorize]
     [HttpPost("CancelBooking")]
     public async Task<ActionResult<CommonResponse<CancelBookingResponse>>> CancelBooking(

@@ -94,6 +94,45 @@ public class BookingCancellationTests
     }
 
     [Fact]
+    public async Task Otp_response_returns_the_masked_mobile()
+    {
+        var rig = CreateRig(Ctx(48));
+
+        var response = await rig.Service.SendCancellationOtpAsync(new SendCancellationOtpRequest { BookingId = 5 }, 7);
+
+        Assert.Contains("******3210", System.Text.Json.JsonSerializer.Serialize(response.Data));
+        Assert.StartsWith("+91 ", TaxHi.Infrastructure.Helpers.MobileNumberHelper.MaskMobile("9876543210"));
+    }
+
+    [Fact]
+    public async Task Other_reason_requires_text_and_is_stored_with_it()
+    {
+        var rig = CreateRig(Ctx(48));
+
+        var missing = await rig.Service.CancelBookingAsync(Req("Other"), 7);
+        Assert.Equal("OTHER_REASON_REQUIRED", missing.ErrorCode);
+        Assert.False(rig.Repo.CancelCalled);
+
+        var ok = await rig.Service.CancelBookingAsync(new CancelBookingRequest { BookingId = 5, Reason = "Other", OtherReason = "Flight cancelled", Otp = "123456" }, 7);
+        Assert.True(ok.Success);
+        Assert.Equal("Other: Flight cancelled", rig.Repo.ReasonPassed);
+    }
+
+    [Theory]
+    [InlineData("OTP_EXPIRED", "OTP expired")]
+    [InlineData("OTP_INVALID", "Invalid OTP")]
+    public async Task Failed_otp_gives_a_clear_message_and_does_not_cancel(string code, string message)
+    {
+        var rig = CreateRig(Ctx(48), otpValid: false);
+        rig.Auth.FailureCode = code;
+
+        var response = await rig.Service.CancelBookingAsync(Req(), 7);
+
+        Assert.StartsWith(message, response.Message);
+        Assert.False(rig.Repo.CancelCalled);
+    }
+
+    [Fact]
     public async Task Otp_is_not_sent_for_a_cancelled_booking()
     {
         var rig = CreateRig(Ctx(48, status: "Cancelled"));
@@ -191,6 +230,7 @@ public class BookingCancellationTests
         public BookingCancellationContext? Context;
         public bool CancelCalled;
         public decimal RefundPassed;
+        public string? ReasonPassed;
 
         public Task<SaveBookingPaymentResponse> SaveBookingPaymentAsync(SaveBookingPaymentRequest request, int userId, BookingAmounts amounts, string bookingNo, string tripCode, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<BookingListResponseDto> GetBookingsAsync(int userId, string mode, int currentPage, int pageSize, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -206,6 +246,7 @@ public class BookingCancellationTests
         {
             CancelCalled = true;
             RefundPassed = refundAmount;
+            ReasonPassed = reason;
             return Task.FromResult(new BookingCancellationResult
             {
                 Outcome = "Cancelled", BookingId = bookingId, BookingNo = Context!.BookingNo, VendorId = Context.VendorId,
@@ -244,13 +285,14 @@ public class BookingCancellationTests
     private sealed class FakeAuthRepo : IAuthenticationRepository
     {
         public bool OtpValid = true;
+        public string FailureCode = "OTP_INVALID";
         public string? CreatedPurpose;
 
         public Task<OtpCreateResult> CreateOtpAsync(string mobileNumber, string purpose, string otpHash, DateTime expires, int maxAttempts, int cooldownSeconds, CancellationToken cancellationToken = default)
         { CreatedPurpose = purpose; return Task.FromResult(new OtpCreateResult { Accepted = true, Expires = expires }); }
 
         public Task<OtpVerificationResult> VerifyOtpAsync(string mobileNumber, string purpose, string otpHash, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new OtpVerificationResult { Success = OtpValid, FailureCode = OtpValid ? "" : "OTP_INVALID" });
+            Task.FromResult(new OtpVerificationResult { Success = OtpValid, FailureCode = OtpValid ? "" : FailureCode });
 
         public Task<UserInfoDto?> GetUserByIdAsync(long userId, CancellationToken cancellationToken = default) =>
             Task.FromResult<UserInfoDto?>(new UserInfoDto { UserId = userId, MobileNumber = "9876543210" });

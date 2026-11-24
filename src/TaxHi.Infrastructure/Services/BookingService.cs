@@ -170,7 +170,7 @@ public sealed partial class BookingService(
                 return ResponseFactory.Failure<object>(StatusCodes.Status429TooManyRequests, "OTP resend is temporarily unavailable.", "OTP_RATE_LIMITED", created.RetryAfterSeconds);
 
             await otpNotifier.SendAsync(mobile, purpose, otp, cancellationToken);
-            return ResponseFactory.Success<object>(new { created.Expires }, "Cancellation OTP sent successfully.");
+            return ResponseFactory.Success<object>(new { created.Expires, MaskedMobile = MobileNumberHelper.MaskMobile(mobile) }, "Cancellation OTP sent successfully.");
         }
         catch (SqlException ex) when (!cancellationToken.IsCancellationRequested)
         {
@@ -186,19 +186,28 @@ public sealed partial class BookingService(
             return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status401Unauthorized, "Authentication is required.", "UNAUTHORIZED");
         if (request is null || request.BookingId is <= 0 or > int.MaxValue)
             return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status400BadRequest, "A valid BookingId is required.", "INVALID_BOOKING_ID");
-        if (request.TripId is > int.MaxValue or < 0)
-            return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status400BadRequest, "TripId is not valid.", "INVALID_TRIP_ID");
+        if (request.BookingId is > int.MaxValue or < 0)
+            return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status400BadRequest, "BookingId is not valid.", "INVALID_TRIP_ID");
 
         var reason = request.Reason?.Trim();
         if (string.IsNullOrEmpty(reason) || reason.Length > 200)
             return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status400BadRequest, "A cancellation reason is required (max 200 characters).", "INVALID_REASON");
+        if (string.Equals(reason, "Other", StringComparison.OrdinalIgnoreCase))
+        {
+            // "Other" needs the customer's own text, which is what gets stored as the reason.
+            var other = request.OtherReason?.Trim();
+            if (string.IsNullOrEmpty(other))
+                return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status400BadRequest, "Please describe the reason when selecting Other.", "OTHER_REASON_REQUIRED");
+            reason = other.Length > 190 ? other[..190] : other;
+            reason = "Other: " + reason;
+        }
         var remarks = string.IsNullOrWhiteSpace(request.Remarks) ? null : request.Remarks.Trim();
         if (remarks is { Length: > 500 })
             return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status400BadRequest, "Remarks can be at most 500 characters.", "INVALID_REMARKS");
         var otp = request.Otp?.Trim() ?? string.Empty;
         if (otp.Length != 6 || !otp.All(char.IsDigit))
             return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status400BadRequest, "A valid 6-digit OTP is required to cancel a booking.", "OTP_REQUIRED");
-        long? tripId = request.TripId is > 0 ? request.TripId : null; // 0 means "not supplied"
+        long? bookingId = request.BookingId is > 0 ? request.BookingId : null; // 0 means "not supplied"
 
         BookingCancellationContext? context;
         BookingCancellationResult result;
@@ -208,7 +217,7 @@ public sealed partial class BookingService(
             // Same answer for "not yours" and "missing" so booking ids cannot be probed.
             if (context is null)
                 return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status404NotFound, "Booking not found.", "BOOKING_NOT_FOUND");
-            if (tripId is not null && context.TripId != tripId)
+            if (bookingId is not null && context.BookingId != bookingId)
                 return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status400BadRequest, "The trip does not belong to this booking.", "TRIP_MISMATCH");
 
             var statusError = CancellableError(context);
@@ -225,10 +234,17 @@ public sealed partial class BookingService(
             if (!verification.Success)
                 return ResponseFactory.Failure<CancelBookingResponse>(
                     verification.FailureCode == "OTP_MAX_ATTEMPTS" ? StatusCodes.Status429TooManyRequests : StatusCodes.Status401Unauthorized,
-                    "The OTP is invalid or has expired.", string.IsNullOrEmpty(verification.FailureCode) ? "OTP_INVALID" : verification.FailureCode);
+                    verification.FailureCode switch
+                    {
+                        "OTP_EXPIRED" => "OTP expired. Please request a new one.",
+                        "OTP_MAX_ATTEMPTS" => "Too many invalid attempts. Please request a new OTP.",
+                        "OTP_NOT_FOUND" => "No active OTP found. Please request a new one.",
+                        _ => "Invalid OTP"
+                    },
+                    string.IsNullOrEmpty(verification.FailureCode) ? "OTP_INVALID" : verification.FailureCode);
 
             var refund = CalculateRefund(context, DateTime.Now);
-            result = await repository.CancelBookingAsync(context.BookingId, userId, tripId, reason, remarks, refund, cancellationToken);
+            result = await repository.CancelBookingAsync(context.BookingId, userId, 0, reason, remarks, refund, cancellationToken);
         }
         catch (SqlException ex) when (!cancellationToken.IsCancellationRequested)
         {

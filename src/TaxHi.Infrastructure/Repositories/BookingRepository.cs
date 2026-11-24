@@ -316,13 +316,11 @@ public sealed class BookingRepository(IDbConnection connection, IConfiguration c
         var parameters = new DynamicParameters();
         parameters.Add("BookingId", (int)bookingId, DbType.Int32);
         parameters.Add("UserId", userId, DbType.Int64);
-        parameters.Add("TripId", tripId is { } t ? (int?)t : null, DbType.Int32);
         parameters.Add("Reason", reason, DbType.String);
         parameters.Add("Remarks", remarks, DbType.String);
-        parameters.Add("RefundAmount", refundAmount, DbType.Decimal);
 
         return await connection.QuerySingleAsync<BookingCancellationResult>(new CommandDefinition(
-            "sp_CancelBooking",
+            "USP_CancelBooking",
             parameters,
             commandType: CommandType.StoredProcedure,
             commandTimeout: 60,

@@ -208,8 +208,10 @@ public sealed class CancelBookingRequest
 {
     public long BookingId { get; init; }
     /// <summary>Optional safety check: when supplied it must be the trip that belongs to the booking.</summary>
-    public long? TripId { get; init; }
+    public string BookingNo { get; init; }
     public string Reason { get; init; } = string.Empty;
+    /// <summary>Required when <see cref="Reason"/> is "Other": the customer's own words.</summary>
+    public string? OtherReason { get; init; }
     public string? Remarks { get; init; }
     /// <summary>6-digit OTP sent by SendCancellationOtp. Mandatory: no booking is cancelled without it.</summary>
     public string Otp { get; init; } = string.Empty;
@@ -241,7 +243,6 @@ public sealed class BookingCancellationContext
     public int VendorId { get; set; }
     public string BookingStatus { get; set; } = string.Empty;
     public DateTime? PickupDateTime { get; set; }
-    public long? TripId { get; set; }
     public long? BookingPaymentId { get; set; }
     /// <summary>Amount of the successful payment; 0 when nothing was paid.</summary>
     public decimal AmountPaid { get; set; }

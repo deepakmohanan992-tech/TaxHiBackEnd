@@ -1,5 +1,6 @@
-using System.Data;
 using Dapper;
+using Microsoft.Extensions.Logging;
+using System.Data;
 using TaxHi.Application.Models.Authentication;
 using TaxHi.Application.Repositories;
 
@@ -69,14 +70,27 @@ public sealed class AuthenticationRepository(IDbConnection connection) : IAuthen
         return await connection.QuerySingleOrDefaultAsync<UserInfoDto>(command);
     }
 
-    public async Task<UserInfoDto?> GetUserByIdAsync(long userId, CancellationToken cancellationToken = default)
+    public async Task<UserInfoDto?> GetUserByIdAsync(
+        long userId,
+        CancellationToken cancellationToken = default)
     {
-        var command = new CommandDefinition(
-            "usp_GetUserById",
-            new { UserId = userId },
-            commandType: CommandType.StoredProcedure,
-            cancellationToken: cancellationToken);
-        return await connection.QuerySingleOrDefaultAsync<UserInfoDto>(command);
+        try
+        {
+            var command = new CommandDefinition(
+                "usp_GetUserById",
+                new { UserId = userId },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            return await connection.QuerySingleOrDefaultAsync<UserInfoDto>(command);
+        }
+        catch (Exception ex)
+        {
+            // Log the exception
+            
+
+            throw;
+        }
     }
 
     public async Task SaveRefreshTokenAsync(long userId, string tokenHash, DateTime expires, CancellationToken cancellationToken = default)
