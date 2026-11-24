@@ -1,12 +1,16 @@
 using Microsoft.AspNetCore.Mvc;
 using TaxHi.Application.Models;
 using TaxHi.Application.Repositories;
+using TaxHi.Application.Services;
 
 namespace TaxHi.Api.Controllers;
 
 [ApiController]
 [Route("api/search")]
-public sealed class SearchController(ISearchRepository searchRepository) : ControllerBase
+public sealed class SearchController(
+    ISearchRepository searchRepository,
+    IAirportTerminalService airportTerminalService,
+    IUserContext userContext) : ControllerBase
 {
     [HttpPost("locations")]
     public async Task<ActionResult<CommonResponse<PagedResult<SelectedItems>>>> GetLocations(
@@ -69,6 +73,17 @@ public sealed class SearchController(ISearchRepository searchRepository) : Contr
             Message = "Locations retrieved successfully.",
             Data = locations
         });
+    }
+
+    // Active airport terminals under the vendor's sector (popular first). The vendor comes from the vendorId
+    // query parameter, read through IUserContext exactly like the lookup endpoints; paging/search from PaginationRequest.
+    [HttpGet("airportTerminals")]
+    public async Task<ActionResult<CommonResponse<PagedResult<SelectedItems>>>> GetAirportTerminals(
+        [FromQuery] PaginationRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await airportTerminalService.GetAirportTerminalsAsync(userContext.VendorId, request, cancellationToken);
+        return StatusCode(response.StatusCode, response);
     }
 
     [HttpPost("availableCabListing")]

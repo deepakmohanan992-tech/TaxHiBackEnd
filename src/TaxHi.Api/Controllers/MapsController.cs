@@ -14,6 +14,8 @@ namespace TaxHi.Api.Controllers;
 [Route("api/Maps")]
 public sealed class MapsController(IGoogleMapsService mapsService) : ControllerBase
 {
+    private readonly IGoogleMapsService mapsService = mapsService;
+
     [HttpPost("Autocomplete")]
     public async Task<ActionResult<CommonResponse<IReadOnlyList<PlaceSuggestionDto>>>> Autocomplete(
         [FromBody] PlaceAutocompleteRequest request,

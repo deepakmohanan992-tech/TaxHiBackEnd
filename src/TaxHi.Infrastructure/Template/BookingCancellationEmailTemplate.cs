@@ -34,12 +34,11 @@ public static class BookingCancellationEmailTemplate
         if (!string.IsNullOrWhiteSpace(info.Remarks)) Row(sb, "Remarks", info.Remarks!);
         // Everything the accounts team needs to pay the refund manually.
         if (info.AmountPaid > 0) Row(sb, "Amount paid", $"Rs. {info.AmountPaid.ToString("N2", Culture)}");
-        if (!string.IsNullOrWhiteSpace(info.PaymentReference)) Row(sb, "Payment reference", info.PaymentReference!);
-        Row(sb, "Refund", RefundText(info));
+        if (!string.IsNullOrWhiteSpace(d.CarType)) Row(sb, "Car Type", d.CarType!);
         sb.Append("</table></td></tr>");
 
         sb.Append("<tr><td style=\"padding:0 24px 16px;font-size:13px;line-height:1.6;\">");
-        sb.Append($"<p style=\"margin:0;\">For any assistance our helpline is available at <b>{E(b.HelplinePhone)}</b> or <a href=\"mailto:{E(b.HelplineEmail)}\">{E(b.HelplineEmail)}</a>.</p>");
+        sb.Append($"<p style=\"margin:0;\">We look forward to see you again soon.For any assistance our helpline is available at <b>{E(b.HelplinePhone)}</b> or <a href=\"mailto:{E(b.HelplineEmail)}\">{E(b.HelplineEmail)}</a>.</p>");
         sb.Append($"<p style=\"margin:16px 0 0;\">Thank You,<br><b>Team {E(b.BrandName)}</b></p></td></tr>");
         sb.Append("</table></td></tr></table></body></html>");
         return sb.ToString();

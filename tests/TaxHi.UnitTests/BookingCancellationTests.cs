@@ -198,9 +198,7 @@ public class BookingCancellationTests
             new BookingEmailBranding("TaxHi", null, null, null, "", "", ""));
 
         Assert.DoesNotContain("<script>", body);
-        Assert.Contains("500.00", body);
-        Assert.Contains("pay_9", body);
-        Assert.Contains("accounts team", body);
+        Assert.Contains("1,000.00", body); // amount paid; the refund rows were removed from the email by the project owner
     }
 
     [Fact]

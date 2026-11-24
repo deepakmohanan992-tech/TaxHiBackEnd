@@ -25,7 +25,7 @@ public sealed class SearchRepository(IDbConnection connection) : ISearchReposito
             commandType: CommandType.StoredProcedure,
             cancellationToken: cancellationToken);
 
-        using var resultSets = await connection.QueryMultipleAsync(command);
+       using var resultSets = await connection.QueryMultipleAsync(command);
         var rows = await resultSets.ReadAsync<OutstationLocation>();
         var pagination = await resultSets.ReadSingleOrDefaultAsync<PaginationMetadata>();
         var locations = rows
@@ -89,4 +89,33 @@ public sealed class SearchRepository(IDbConnection connection) : ISearchReposito
         };
     }
 
+    public async Task<PagedResult<SelectedItems>> GetAirportTerminalsAsync(
+        int vendorId,
+        PaginationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var keyword = NormalizeKeyword(request.Keyword);
+        var command = new CommandDefinition(
+            commandText: "USP_GetAirportTerminals",
+            parameters: new { VendorId = vendorId, Keyword = keyword, request.CurrentPage, request.PageSize },
+            commandType: CommandType.StoredProcedure,
+            cancellationToken: cancellationToken);
+
+        using var resultSets = await connection.QueryMultipleAsync(command);
+        var rows = (await resultSets.ReadAsync<AirportTerminal>())
+            .Where(row => !string.IsNullOrWhiteSpace(row.AirportName))
+            .Select(row => new SelectedItems { Id = row.AirportTerminalId, Value = row.AirportName.Trim() })
+            .ToList();
+        var pagination = await resultSets.ReadSingleOrDefaultAsync<PaginationMetadata>();
+
+        return new PagedResult<SelectedItems>
+        {
+            Items = rows,
+            CurrentPage = pagination?.CurrentPage ?? request.CurrentPage,
+            PageSize = pagination?.PageSize ?? request.PageSize,
+            TotalItems = pagination?.TotalRecords ?? rows.Count,
+            TotalPages = pagination?.TotalPages ?? (rows.Count == 0 ? 0 : 1),
+            Keyword = keyword
+        };
+    }
 }

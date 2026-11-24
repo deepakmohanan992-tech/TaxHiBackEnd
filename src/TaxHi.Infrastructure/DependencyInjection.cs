@@ -22,6 +22,7 @@ public static class DependencyInjection
         services.AddScoped<IUserContext, UserContext>();
         services.AddScoped<ILookupRepository, LookupRepository>();
         services.AddScoped<ISearchRepository, SearchRepository>();
+        services.AddScoped<IAirportTerminalService, AirportTerminalService>();
         services.AddScoped<IAuthenticationRepository, AuthenticationRepository>();
         services.AddScoped<IAuthenticationService, AuthenticationService>();
         // Booking:* values are read straight from IConfiguration (see BookingSettings); validated once at startup as before.
