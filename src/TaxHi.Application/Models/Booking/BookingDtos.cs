@@ -201,3 +201,63 @@ public sealed class GatewayPaymentResult
     public decimal AmountPaid { get; set; }
     public decimal BalancePayableAmount { get; set; }
 }
+
+// ------------------------------------------------------------------ Cancellation
+
+public sealed class CancelBookingRequest
+{
+    public long BookingId { get; init; }
+    /// <summary>Optional safety check: when supplied it must be the trip that belongs to the booking.</summary>
+    public long? TripId { get; init; }
+    public string Reason { get; init; } = string.Empty;
+    public string? Remarks { get; init; }
+    /// <summary>6-digit OTP sent by SendCancellationOtp. Mandatory: no booking is cancelled without it.</summary>
+    public string Otp { get; init; } = string.Empty;
+}
+
+public sealed class SendCancellationOtpRequest
+{
+    public long BookingId { get; init; }
+}
+
+public sealed class CancelBookingResponse
+{
+    public long BookingId { get; set; }
+    public string? BookingNo { get; set; }
+    public string BookingStatus { get; set; } = "Cancelled";
+    public DateTime CancelledDate { get; set; }
+    public decimal RefundAmount { get; set; }
+    /// <summary>NotApplicable | Pending (refund is due and will be paid manually by the accounts team)</summary>
+    public string RefundStatus { get; set; } = "NotApplicable";
+    public string? RefundMessage { get; set; }
+}
+
+/// <summary>Read model of USP_GetBookingCancellationContext.</summary>
+public sealed class BookingCancellationContext
+{
+    public long BookingId { get; set; }
+    public string BookingNo { get; set; } = string.Empty;
+    public long UserId { get; set; }
+    public int VendorId { get; set; }
+    public string BookingStatus { get; set; } = string.Empty;
+    public DateTime? PickupDateTime { get; set; }
+    public long? TripId { get; set; }
+    public long? BookingPaymentId { get; set; }
+    /// <summary>Amount of the successful payment; 0 when nothing was paid.</summary>
+    public decimal AmountPaid { get; set; }
+    public string? PaymentGateway { get; set; }
+    public string? PaymentGatewayPaymentId { get; set; }
+}
+
+/// <summary>Result row of sp_CancelBooking. Outcome: Cancelled | NotFound | TripMismatch | NotCancellable.</summary>
+public sealed class BookingCancellationResult
+{
+    public string Outcome { get; set; } = string.Empty;
+    public long BookingId { get; set; }
+    public string? BookingNo { get; set; }
+    public int VendorId { get; set; }
+    public string? PreviousStatus { get; set; }
+    public decimal RefundAmount { get; set; }
+    public string RefundStatus { get; set; } = "NotApplicable";
+    public DateTime? CancelledDateUtc { get; set; }
+}

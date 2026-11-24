@@ -24,6 +24,63 @@ public sealed class BookingConfirmationEmailService(
 {
     private const string SentAction = "BookingConfirmationEmailSent";
     private const string FailedAction = "BookingConfirmationEmailFailed";
+    private const string CancellationSentAction = "BookingCancellationEmailSent";
+    private const string CancellationFailedAction = "BookingCancellationEmailFailed";
+
+    /// <summary>Same vendor Gmail identity, branding and CC rule as the confirmation; no invoice attachment.</summary>
+    public async Task SendBookingCancellationAsync(
+        long bookingId, long userId, BookingCancellationEmailInfo info, CancellationToken cancellationToken = default)
+    {
+        BookingConfirmationEmailDto? details = null;
+        try
+        {
+            details = await repository.GetConfirmationEmailDetailsAsync(bookingId, userId, cancellationToken);
+            if (details is null)
+            {
+                logger.LogWarning("Cancellation email skipped: booking {BookingId} not found for user {UserId}.", bookingId, userId);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(details.CustomerEmail))
+                throw new InvalidOperationException("The booking has no customer email address.");
+            if (string.IsNullOrWhiteSpace(details.GmailUserName) || string.IsNullOrWhiteSpace(details.GmailAppPassword))
+                throw new InvalidOperationException($"Vendor {details.VendorId} has no Gmail credentials configured.");
+
+            var branding = LoadBranding(details);
+            using var message = new MailMessage
+            {
+                From = new MailAddress(details.GmailUserName.Trim(), string.IsNullOrWhiteSpace(details.VendorName) ? branding.BrandName : details.VendorName.Trim()),
+                Subject = BookingCancellationEmailTemplate.BuildSubject(details),
+                SubjectEncoding = Encoding.UTF8,
+                BodyEncoding = Encoding.UTF8,
+                IsBodyHtml = true,
+                Body = BookingCancellationEmailTemplate.BuildBody(details, info, branding)
+            };
+            message.To.Add(new MailAddress(details.CustomerEmail.Trim()));
+            // Vendor staff plus the accounts team, who pay the refund manually. Duplicates are dropped.
+            var accounts = AccountsTeamEmails();
+            if (accounts.Count == 0 && info.RefundAmount > 0)
+                logger.LogWarning("No accounts team email is configured (BookingEmail:AccountsTeamEmails); the manual refund for booking {BookingNo} will not reach accounts.", details.BookingNo);
+
+            foreach (var cc in new[] { details.ReservationStaffEmail, details.ContactPersonEmail }
+                         .SelectMany(SplitAddresses)
+                         .Concat(accounts)
+                         .Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (!string.Equals(cc, details.CustomerEmail.Trim(), StringComparison.OrdinalIgnoreCase))
+                    message.CC.Add(new MailAddress(cc));
+            }
+
+            await SendAsync(message, details, cancellationToken);
+            await TryAuditAsync(details, CancellationSentAction, $"Booking {details.BookingNo}: cancellation email sent to {details.CustomerEmail}.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Booking cancellation email failed for booking {BookingId}.", bookingId);
+            await TryAuditAsync(details?.VendorId ?? 0, details?.UserId ?? userId, CancellationFailedAction,
+                $"Booking {details?.BookingNo ?? bookingId.ToString()}: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
 
     public async Task SendBookingConfirmationAsync(long bookingId, long userId, CancellationToken cancellationToken = default)
     {
@@ -137,6 +194,18 @@ public sealed class BookingConfirmationEmailService(
         {
             logger.LogError(ex, "Could not write the booking email audit log ({Action}).", action);
         }
+    }
+
+    /// <summary>
+    /// BookingEmail:AccountsTeamEmails, either one string ("a@x.com" or "a@x.com;b@x.com", comma or semicolon separated)
+    /// or a JSON array. Invalid addresses are ignored.
+    /// </summary>
+    private List<string> AccountsTeamEmails()
+    {
+        var section = configuration.GetSection("BookingEmail:AccountsTeamEmails");
+        var raw = new List<string?> { section.Value };
+        raw.AddRange(section.GetChildren().Select(c => c.Value));
+        return raw.SelectMany(SplitAddresses).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     private static IEnumerable<string> SplitAddresses(string? value) =>

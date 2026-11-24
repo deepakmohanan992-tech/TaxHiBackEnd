@@ -32,6 +32,14 @@ public interface IBookingRepository
         string gatewayOrderId, string gatewayPaymentId, long? amountPaise, string? paymentMethod,
         string? eventId, string? eventType, CancellationToken cancellationToken = default);
 
+    /// <summary>Booking, owner, pickup time and successful payment; null when missing or not owned by <paramref name="userId"/>.</summary>
+    Task<BookingCancellationContext?> GetCancellationContextAsync(long bookingId, long userId, CancellationToken cancellationToken = default);
+
+    /// <summary>Runs sp_CancelBooking: validates under a lock and cancels once, storing the manual-refund decision.</summary>
+    Task<BookingCancellationResult> CancelBookingAsync(
+        long bookingId, long userId, long? tripId, string reason, string? remarks,
+        decimal refundAmount, CancellationToken cancellationToken = default);
+
     /// <summary>Records a failed attempt. Never downgrades a successful payment.</summary>
     Task<GatewayPaymentResult> FailGatewayPaymentAsync(
         string gatewayOrderId, string? gatewayPaymentId, string? reason,

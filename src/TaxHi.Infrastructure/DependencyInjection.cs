@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TaxHi.Application.Repositories;
 using TaxHi.Application.Services;
+using TaxHi.Infrastructure.Common;
 using TaxHi.Infrastructure.Repositories;
 using TaxHi.Infrastructure.Services;
 
@@ -23,11 +24,11 @@ public static class DependencyInjection
         services.AddScoped<ISearchRepository, SearchRepository>();
         services.AddScoped<IAuthenticationRepository, AuthenticationRepository>();
         services.AddScoped<IAuthenticationService, AuthenticationService>();
-        services.AddOptions<BookingOptions>()
-            .Bind(configuration.GetSection("Booking"))
-            .Validate(o => o.HoldDurationMinutes is > 0 and <= 1440, "Booking:HoldDurationMinutes must be between 1 and 1440.")
-            .Validate(o => o.LockTimeoutMilliseconds is >= 0 and <= 120000, "Booking:LockTimeoutMilliseconds must be between 0 and 120000.")
-            .ValidateOnStart();
+        // Booking:* values are read straight from IConfiguration (see BookingSettings); validated once at startup as before.
+        if (BookingSettings.HoldDurationMinutes(configuration) is not (> 0 and <= 1440))
+            throw new InvalidOperationException("Booking:HoldDurationMinutes must be between 1 and 1440.");
+        if (BookingSettings.LockTimeoutMilliseconds(configuration) is not (>= 0 and <= 120000))
+            throw new InvalidOperationException("Booking:LockTimeoutMilliseconds must be between 0 and 120000.");
         services.AddScoped<IBookingRepository, BookingRepository>();
         services.AddScoped<IBookingService, BookingService>();
         services.AddScoped<IBookingInvoiceRepository, BookingInvoiceRepository>();

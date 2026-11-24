@@ -1,18 +1,19 @@
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Configuration;
 using System.Data;
 using System.Xml.Linq;
 using TaxHi.Application.Models;
 using TaxHi.Application.Models.Booking;
 using TaxHi.Application.Repositories;
 using TaxHi.Application.Services;
+using TaxHi.Infrastructure.Common;
 using TaxHi.Infrastructure.Models;
 
 namespace TaxHi.Infrastructure.Repositories;
 
-public sealed class BookingRepository(IDbConnection connection, IOptions<BookingOptions> options) : IBookingRepository
+public sealed class BookingRepository(IDbConnection connection, IConfiguration configuration) : IBookingRepository
 {
     private const int MaxDeadlockAttempts = 3;
     private const int MaxBookingNoAttempts = 5;
@@ -109,8 +110,8 @@ public sealed class BookingRepository(IDbConnection connection, IOptions<Booking
             parameters.Add("BookingNo", bookingNo, DbType.String);
             parameters.Add("TripCode", tripCode, DbType.AnsiString, size: 50);
             parameters.Add("AddOns", addOns, DbType.Xml);
-            parameters.Add("HoldMinutes", options.Value.HoldDurationMinutes, DbType.Int32);
-            parameters.Add("LockTimeoutMs", options.Value.LockTimeoutMilliseconds, DbType.Int32);
+            parameters.Add("HoldMinutes", BookingSettings.HoldDurationMinutes(configuration), DbType.Int32);
+            parameters.Add("LockTimeoutMs", BookingSettings.LockTimeoutMilliseconds(configuration), DbType.Int32);
 
             var command = new CommandDefinition(
                 "USP_SaveBookingPayment",
@@ -256,8 +257,8 @@ public sealed class BookingRepository(IDbConnection connection, IOptions<Booking
         parameters.Add("PaymentMethod", paymentMethod, DbType.String, size: 50);
         parameters.Add("EventId", eventId, DbType.AnsiString, size: 100);
         parameters.Add("EventType", eventType, DbType.AnsiString, size: 60);
-        parameters.Add("HoldMinutes", options.Value.HoldDurationMinutes, DbType.Int32);
-        parameters.Add("LockTimeoutMs", options.Value.LockTimeoutMilliseconds, DbType.Int32);
+        parameters.Add("HoldMinutes", BookingSettings.HoldDurationMinutes(configuration), DbType.Int32);
+        parameters.Add("LockTimeoutMs", BookingSettings.LockTimeoutMilliseconds(configuration), DbType.Int32);
         return RunGatewayProcedureAsync("USP_ConfirmBookingGatewayPayment", parameters, cancellationToken);
     }
 
@@ -291,6 +292,41 @@ public sealed class BookingRepository(IDbConnection connection, IOptions<Booking
                 await Task.Delay(Random.Shared.Next(20, 80) * attempt, cancellationToken);
             }
         }
+    }
+
+    // ------------------------------------------------------------------ cancellation
+
+    public async Task<BookingCancellationContext?> GetCancellationContextAsync(
+        long bookingId, long userId, CancellationToken cancellationToken = default)
+    {
+        // TaxHiBEBookings.BookingId is INT; anything larger cannot exist.
+        if (bookingId is <= 0 or > int.MaxValue) return null;
+
+        return await connection.QuerySingleOrDefaultAsync<BookingCancellationContext>(new CommandDefinition(
+            "USP_GetBookingCancellationContext",
+            new { BookingId = (int)bookingId, UserId = userId },
+            commandType: CommandType.StoredProcedure,
+            cancellationToken: cancellationToken));
+    }
+
+    public async Task<BookingCancellationResult> CancelBookingAsync(
+        long bookingId, long userId, long? tripId, string reason, string? remarks,
+        decimal refundAmount, CancellationToken cancellationToken = default)
+    {
+        var parameters = new DynamicParameters();
+        parameters.Add("BookingId", (int)bookingId, DbType.Int32);
+        parameters.Add("UserId", userId, DbType.Int64);
+        parameters.Add("TripId", tripId is { } t ? (int?)t : null, DbType.Int32);
+        parameters.Add("Reason", reason, DbType.String);
+        parameters.Add("Remarks", remarks, DbType.String);
+        parameters.Add("RefundAmount", refundAmount, DbType.Decimal);
+
+        return await connection.QuerySingleAsync<BookingCancellationResult>(new CommandDefinition(
+            "sp_CancelBooking",
+            parameters,
+            commandType: CommandType.StoredProcedure,
+            commandTimeout: 60,
+            cancellationToken: cancellationToken));
     }
 
     private const string TripCodeAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";

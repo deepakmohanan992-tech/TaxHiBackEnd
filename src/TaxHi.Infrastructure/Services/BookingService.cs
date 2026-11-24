@@ -3,6 +3,8 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using TaxHi.Application.Enums;
 using TaxHi.Application.Models;
 using TaxHi.Application.Models.Booking;
@@ -18,6 +20,12 @@ public sealed partial class BookingService(
     IBookingRepository repository,
     IBookingInvoiceService invoiceService,
     IBookingRouteRepository routeRepository,
+    IBookingEmailRepository emailRepository,
+    IAuthenticationRepository authenticationRepository,
+    IOtpNotifier otpNotifier,
+    IOptions<AuthenticationOptions> authenticationOptions,
+    IBookingConfirmationEmailService emailService,
+    IConfiguration configuration,
     ILogger<BookingService> logger) : IBookingService
 {
     private const decimal PartPayPercent = 25m;
@@ -121,6 +129,197 @@ public sealed partial class BookingService(
         {
             logger.LogError(ex, "Database error while fetching bookings (SQL error {Number}).", ex.Number);
             return ResponseFactory.Failure<BookingListResponseDto>(StatusCodes.Status500InternalServerError, "Unable to fetch bookings right now. Please try again.", "BOOKINGS_FETCH_FAILED");
+        }
+    }
+
+    // ------------------------------------------------------------------ cancellation
+
+    private const string RefundPending = "Pending";
+
+    private static string CancellationOtpPurpose(long bookingId) => $"BookingCancellation:{bookingId}";
+
+    public async Task<CommonResponse<object>> SendCancellationOtpAsync(
+        SendCancellationOtpRequest request, int userId, CancellationToken cancellationToken = default)
+    {
+        if (userId <= 0)
+            return ResponseFactory.Failure<object>(StatusCodes.Status401Unauthorized, "Authentication is required.", "UNAUTHORIZED");
+        if (request is null || request.BookingId is <= 0 or > int.MaxValue)
+            return ResponseFactory.Failure<object>(StatusCodes.Status400BadRequest, "A valid BookingId is required.", "INVALID_BOOKING_ID");
+
+        try
+        {
+            var context = await repository.GetCancellationContextAsync(request.BookingId, userId, cancellationToken);
+            if (context is null)
+                return ResponseFactory.Failure<object>(StatusCodes.Status404NotFound, "Booking not found.", "BOOKING_NOT_FOUND");
+            var statusError = CancellableError(context);
+            if (statusError is not null)
+                return ResponseFactory.Failure<object>(statusError.StatusCode, statusError.Message, statusError.ErrorCode ?? "BOOKING_NOT_CANCELLABLE");
+
+            // The OTP goes to the account holder's own mobile number, not to a number typed into the booking.
+            var user = await authenticationRepository.GetUserByIdAsync(userId, cancellationToken);
+            if (user is null || !MobileNumberHelper.IsValidMobile(user.MobileNumber))
+                return ResponseFactory.Failure<object>(StatusCodes.Status409Conflict, "No valid mobile number is registered for this account.", "MOBILE_NOT_AVAILABLE");
+
+            var settings = authenticationOptions.Value;
+            var mobile = MobileNumberHelper.NormalizeMobile(user.MobileNumber);
+            var purpose = CancellationOtpPurpose(context.BookingId);
+            var otp = OtpService.CreateNumericCode(6);
+            var created = await authenticationRepository.CreateOtpAsync(mobile, purpose, TokenHelper.Hash(otp, settings.JwtSigningKey),
+                DateTime.Now.AddMinutes(settings.OtpExpiryMinutes), settings.OtpMaxAttempts, settings.OtpResendCooldownSeconds, cancellationToken);
+            if (!created.Accepted)
+                return ResponseFactory.Failure<object>(StatusCodes.Status429TooManyRequests, "OTP resend is temporarily unavailable.", "OTP_RATE_LIMITED", created.RetryAfterSeconds);
+
+            await otpNotifier.SendAsync(mobile, purpose, otp, cancellationToken);
+            return ResponseFactory.Success<object>(new { created.Expires }, "Cancellation OTP sent successfully.");
+        }
+        catch (SqlException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogError(ex, "Database error while sending the cancellation OTP for booking {BookingId} (SQL error {Number}).", request.BookingId, ex.Number);
+            return ResponseFactory.Failure<object>(StatusCodes.Status500InternalServerError, "Unable to send the OTP right now. Please try again.", "OTP_SEND_FAILED");
+        }
+    }
+
+    public async Task<CommonResponse<CancelBookingResponse>> CancelBookingAsync(
+        CancelBookingRequest request, int userId, CancellationToken cancellationToken = default)
+    {
+        if (userId <= 0)
+            return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status401Unauthorized, "Authentication is required.", "UNAUTHORIZED");
+        if (request is null || request.BookingId is <= 0 or > int.MaxValue)
+            return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status400BadRequest, "A valid BookingId is required.", "INVALID_BOOKING_ID");
+        if (request.TripId is > int.MaxValue or < 0)
+            return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status400BadRequest, "TripId is not valid.", "INVALID_TRIP_ID");
+
+        var reason = request.Reason?.Trim();
+        if (string.IsNullOrEmpty(reason) || reason.Length > 200)
+            return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status400BadRequest, "A cancellation reason is required (max 200 characters).", "INVALID_REASON");
+        var remarks = string.IsNullOrWhiteSpace(request.Remarks) ? null : request.Remarks.Trim();
+        if (remarks is { Length: > 500 })
+            return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status400BadRequest, "Remarks can be at most 500 characters.", "INVALID_REMARKS");
+        var otp = request.Otp?.Trim() ?? string.Empty;
+        if (otp.Length != 6 || !otp.All(char.IsDigit))
+            return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status400BadRequest, "A valid 6-digit OTP is required to cancel a booking.", "OTP_REQUIRED");
+        long? tripId = request.TripId is > 0 ? request.TripId : null; // 0 means "not supplied"
+
+        BookingCancellationContext? context;
+        BookingCancellationResult result;
+        try
+        {
+            context = await repository.GetCancellationContextAsync(request.BookingId, userId, cancellationToken);
+            // Same answer for "not yours" and "missing" so booking ids cannot be probed.
+            if (context is null)
+                return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status404NotFound, "Booking not found.", "BOOKING_NOT_FOUND");
+            if (tripId is not null && context.TripId != tripId)
+                return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status400BadRequest, "The trip does not belong to this booking.", "TRIP_MISMATCH");
+
+            var statusError = CancellableError(context);
+            if (statusError is not null)
+                return statusError;
+
+            // OTP is checked last, after the cheap rejections, so a wrong booking never burns an attempt. It is mandatory.
+            var user = await authenticationRepository.GetUserByIdAsync(userId, cancellationToken);
+            if (user is null || !MobileNumberHelper.IsValidMobile(user.MobileNumber))
+                return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status409Conflict, "No valid mobile number is registered for this account.", "MOBILE_NOT_AVAILABLE");
+            var verification = await authenticationRepository.VerifyOtpAsync(
+                MobileNumberHelper.NormalizeMobile(user.MobileNumber), CancellationOtpPurpose(context.BookingId),
+                TokenHelper.Hash(otp, authenticationOptions.Value.JwtSigningKey), cancellationToken);
+            if (!verification.Success)
+                return ResponseFactory.Failure<CancelBookingResponse>(
+                    verification.FailureCode == "OTP_MAX_ATTEMPTS" ? StatusCodes.Status429TooManyRequests : StatusCodes.Status401Unauthorized,
+                    "The OTP is invalid or has expired.", string.IsNullOrEmpty(verification.FailureCode) ? "OTP_INVALID" : verification.FailureCode);
+
+            var refund = CalculateRefund(context, DateTime.Now);
+            result = await repository.CancelBookingAsync(context.BookingId, userId, tripId, reason, remarks, refund, cancellationToken);
+        }
+        catch (SqlException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogError(ex, "Database error while cancelling booking {BookingId} (SQL error {Number}).", request.BookingId, ex.Number);
+            return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status500InternalServerError, "Unable to cancel the booking right now. Please try again.", "BOOKING_CANCEL_FAILED");
+        }
+
+        // The stored procedure re-checks under a lock, so a concurrent cancel/payment can still lose the race here.
+        switch (result.Outcome)
+        {
+            case "Cancelled":
+                break;
+            case "NotFound":
+                return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status404NotFound, "Booking not found.", "BOOKING_NOT_FOUND");
+            case "TripMismatch":
+                return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status400BadRequest, "The trip does not belong to this booking.", "TRIP_MISMATCH");
+            default:
+                return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status409Conflict,
+                    $"This booking is {(result.PreviousStatus ?? "no longer active").ToLowerInvariant()} and cannot be cancelled.", "BOOKING_NOT_CANCELLABLE");
+        }
+
+        // From here the cancellation is committed. Nothing below may fail it, and a client disconnect must not
+        // skip the refund or the audit, so none of it observes the request's cancellation token.
+        var cancelledDate = DateTime.SpecifyKind(result.CancelledDateUtc ?? DateTime.UtcNow, DateTimeKind.Utc).ToLocalTime();
+        // Refunds are paid manually by the accounts team; the cancellation email tells them what is due.
+        var refundStatus = result.RefundStatus;
+
+        await TryAuditAsync(context.VendorId, userId, "BookingCancelled",
+            $"Booking {context.BookingNo}: cancelled by user {userId}. Reason: {reason}. Remarks: {remarks ?? "-"}. Refund due: {result.RefundAmount:0.00} ({refundStatus}, manual).");
+
+        try
+        {
+            await emailService.SendBookingCancellationAsync(context.BookingId, userId,
+                new BookingCancellationEmailInfo(reason, remarks, cancelledDate, result.RefundAmount, refundStatus,
+                    context.AmountPaid, context.PaymentGatewayPaymentId));
+        }
+        catch (Exception ex)
+        {
+            // The email service already swallows its own failures; this guards against anything else (e.g. DI/config).
+            logger.LogError(ex, "Cancellation email failed for booking {BookingId}.", context.BookingId);
+        }
+
+        return ResponseFactory.Success(new CancelBookingResponse
+        {
+            BookingId = context.BookingId,
+            BookingNo = context.BookingNo,
+            BookingStatus = "Cancelled",
+            CancelledDate = cancelledDate,
+            RefundAmount = result.RefundAmount,
+            RefundStatus = refundStatus,
+            RefundMessage = refundStatus switch
+            {
+                RefundPending => "Your refund has been recorded. Our accounts team will process it manually.",
+                _ => "No refund applies to this cancellation."
+            }
+        }, "Booking cancelled successfully.");
+    }
+
+    private static CommonResponse<CancelBookingResponse>? CancellableError(BookingCancellationContext c)
+    {
+        if (c.BookingStatus is not ("Pending" or "Confirmed"))
+            return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status409Conflict,
+                c.BookingStatus == "Cancelled" ? "This booking is already cancelled." : $"A {c.BookingStatus.ToLowerInvariant()} booking cannot be cancelled.",
+                c.BookingStatus == "Cancelled" ? "ALREADY_CANCELLED" : "BOOKING_NOT_CANCELLABLE");
+        if (c.PickupDateTime is { } pickup && pickup <= DateTime.Now)
+            return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status409Conflict,
+                "This trip has already started or completed and cannot be cancelled.", "BOOKING_NOT_CANCELLABLE");
+        return null;
+    }
+
+    /// <summary>Full refund well before pickup, a percentage closer to it, nothing inside the last window. Unpaid bookings refund nothing.</summary>
+    private decimal CalculateRefund(BookingCancellationContext c, DateTime now)
+    {
+        if (c.AmountPaid <= 0 || c.PickupDateTime is not { } pickup) return 0m;
+
+        var hoursToPickup = (pickup - now).TotalHours;
+        if (hoursToPickup >= BookingSettings.FullRefundHoursBeforePickup(configuration)) return Round(c.AmountPaid);
+        if (hoursToPickup >= BookingSettings.PartialRefundHoursBeforePickup(configuration)) return Round(c.AmountPaid * Math.Clamp(BookingSettings.PartialRefundPercent(configuration), 0m, 100m) / 100m);
+        return 0m;
+    }
+
+    /// <summary>Audit writing is best effort: a logging problem must not surface.</summary>
+    private async Task TryAuditAsync(int vendorId, long userId, string action, string text)
+    {
+        try
+        {
+            await emailRepository.SaveAuditLogAsync(vendorId, userId, action, text.Length <= 2000 ? text : text[..2000], CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not write the booking audit log ({Action}).", action);
         }
     }
 
