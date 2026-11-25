@@ -9,7 +9,7 @@ public sealed class AvailableCabListing
     public int? VehicleCategoryId { get; set; }
     public int? VehicleBrandId { get; set; }
     public string? FuelType { get; init; }
-    public string? VehicleImageURL { get; init; }
+    public string? VehicleImageURL { get; set; }
     public string? VehicleDescription { get; init; }
     public decimal? DiscountPercentage { get; init; }
     public decimal? OriginalAmount { get; init; }

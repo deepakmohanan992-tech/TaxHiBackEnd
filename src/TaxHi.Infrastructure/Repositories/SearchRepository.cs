@@ -1,5 +1,6 @@
 using System.Data;
 using Dapper;
+using Microsoft.Extensions.Configuration;
 using TaxHi.Application.Models;
 using TaxHi.Application.Repositories;
 using TaxHi.Infrastructure.Models;
@@ -7,8 +8,19 @@ using static TaxHi.Infrastructure.Helpers.SearchHelper;
 
 namespace TaxHi.Infrastructure.Repositories;
 
-public sealed class SearchRepository(IDbConnection connection) : ISearchRepository
+public sealed class SearchRepository(IDbConnection connection, IConfiguration configuration) : ISearchRepository
 {
+    /// <summary>ImageBaseUrl + the stored image value, with exactly one slash between them. Absolute URLs are left alone.</summary>
+    private string? BuildImageUrl(string? image)
+    {
+        var baseUrl = configuration["ImageBaseUrl"];
+        if (string.IsNullOrWhiteSpace(image) || string.IsNullOrWhiteSpace(baseUrl)) return image;
+        image = image.Trim();
+        if (Uri.TryCreate(image, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+            return image;
+        return baseUrl.Trim().TrimEnd('/') + "/" + image.TrimStart('/');
+    }
+
     public async Task<PagedResult<SelectedItems>> GetOutstationLocationsBySearchAsync(
         LocationSearchRequestDto request,
         CancellationToken cancellationToken = default)
@@ -77,6 +89,8 @@ public sealed class SearchRepository(IDbConnection connection) : ISearchReposito
         using var resultSets = await connection.QueryMultipleAsync(command);
         var rows = (await resultSets.ReadAsync<AvailableCabListing>()).AsList();
         var pagination = await resultSets.ReadSingleOrDefaultAsync<PaginationMetadata>();
+        foreach (var row in rows)
+            row.VehicleImageURL = BuildImageUrl(row.VehicleImageURL);
 
         return new PagedResult<AvailableCabListing>
         {
