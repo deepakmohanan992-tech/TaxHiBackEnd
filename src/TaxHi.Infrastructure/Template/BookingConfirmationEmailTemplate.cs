@@ -90,7 +90,7 @@ public static class BookingConfirmationEmailTemplate
         sb.Append("</ul>");
         if (Url(b.TermsUrl) is { } terms)
             sb.Append($"<p style=\"margin:8px 0 0;\">For detailed terms and conditions, <a href=\"{E(terms)}\">click here</a>.</p>");
-        sb.Append($"<p style=\"margin:12px 0 0;\">For any assistance our 24x7 helpline is available at <b>{E(b.HelplinePhone)}</b> or <a href=\"mailto:{E(b.HelplineEmail)}\">{E(b.HelplineEmail)}</a>.</p>");
+        sb.Append($"<p style=\"margin:12px 0 0;\">For any assistance, please contact us at <a href=\"mailto:{E(d.ContactPersonEmail)}\">{E(d.ContactPersonEmail)}</a>.</p>");
         sb.Append($"<p style=\"margin:16px 0 0;\">Thank You,<br><b>Team {E(b.BrandName)}</b></p>");
         sb.Append("</td></tr>");
 

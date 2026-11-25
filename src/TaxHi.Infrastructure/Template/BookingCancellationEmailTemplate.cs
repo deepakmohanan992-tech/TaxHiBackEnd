@@ -28,17 +28,21 @@ public static class BookingCancellationEmailTemplate
         sb.Append("<tr><td style=\"padding:0 24px 16px;\"><table role=\"presentation\" width=\"100%\" cellpadding=\"8\" cellspacing=\"0\" style=\"border:1px solid #e0e0e0;font-size:14px;\">");
         Row(sb, "Booking ID", d.BookingNo);
         Row(sb, "Trip", $"{Or(d.PickupCity, "-")} to {Or(d.DropCity, "-")} ({Or(d.TripType, "-")})");
+        if (!string.IsNullOrWhiteSpace(d.CarType)) Row(sb, "Car Type", d.CarType!);
         Row(sb, "Pickup time", d.PickupDateTime?.ToString("dddd, dd MMM yyyy hh:mm tt", CultureInfo.InvariantCulture) ?? "-");
         Row(sb, "Cancelled on", info.CancelledDate.ToString("dd MMM yyyy hh:mm tt", CultureInfo.InvariantCulture));
         Row(sb, "Reason", info.Reason);
         if (!string.IsNullOrWhiteSpace(info.Remarks)) Row(sb, "Remarks", info.Remarks!);
         // Everything the accounts team needs to pay the refund manually.
         if (info.AmountPaid > 0) Row(sb, "Amount paid", $"Rs. {info.AmountPaid.ToString("N2", Culture)}");
-        if (!string.IsNullOrWhiteSpace(d.CarType)) Row(sb, "Car Type", d.CarType!);
+        //if (!string.IsNullOrWhiteSpace(info.PaymentReference)) Row(sb, "Payment reference", info.PaymentReference!);
+        Row(sb, "Customer", Or(d.CustomerName, "-"));
+        if (!string.IsNullOrWhiteSpace(d.CustomerEmail)) Row(sb, "Customer email", d.CustomerEmail!);
+        if (!string.IsNullOrWhiteSpace(d.CustomerPhone)) Row(sb, "Customer phone", d.CustomerPhone!);
         sb.Append("</table></td></tr>");
 
         sb.Append("<tr><td style=\"padding:0 24px 16px;font-size:13px;line-height:1.6;\">");
-        sb.Append($"<p style=\"margin:0;\">We look forward to see you again soon.For any assistance our helpline is available at <b>{E(b.HelplinePhone)}</b> or <a href=\"mailto:{E(b.HelplineEmail)}\">{E(b.HelplineEmail)}</a>.</p>");
+        sb.Append($"<p style=\"margin:0;\">We look forward to seeing you again soon. For any assistance, please contact us at <a href=\"mailto:{E(d.ContactPersonEmail)}\">{E(d.ContactPersonEmail)}</a>.</p>");
         sb.Append($"<p style=\"margin:16px 0 0;\">Thank You,<br><b>Team {E(b.BrandName)}</b></p></td></tr>");
         sb.Append("</table></td></tr></table></body></html>");
         return sb.ToString();

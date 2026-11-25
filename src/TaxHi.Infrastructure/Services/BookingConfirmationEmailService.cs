@@ -47,6 +47,9 @@ public sealed class BookingConfirmationEmailService(
                 throw new InvalidOperationException($"Vendor {details.VendorId} has no Gmail credentials configured.");
 
             var branding = LoadBranding(details);
+            // The assistance line shows this booking's vendor contact email; the configured helpline email is the fallback.
+            if (SplitAddresses(details.ContactPersonEmail).FirstOrDefault() is { } vendorEmail)
+                branding = branding with { HelplineEmail = vendorEmail };
             using var message = new MailMessage
             {
                 From = new MailAddress(details.GmailUserName.Trim(), string.IsNullOrWhiteSpace(details.VendorName) ? branding.BrandName : details.VendorName.Trim()),
@@ -60,7 +63,7 @@ public sealed class BookingConfirmationEmailService(
             // Vendor staff plus the accounts team, who pay the refund manually. Duplicates are dropped.
             var accounts = AccountsTeamEmails();
             if (accounts.Count == 0 && info.RefundAmount > 0)
-                logger.LogWarning("No accounts team email is configured (BookingEmail:AccountsTeamEmails); the manual refund for booking {BookingNo} will not reach accounts.", details.BookingNo);
+                logger.LogWarning("No accounts team email is configured (BookingEmail:AccountEmail); the manual refund for booking {BookingNo} will not reach accounts.", details.BookingNo);
 
             foreach (var cc in new[] { details.ReservationStaffEmail, details.ContactPersonEmail }
                          .SelectMany(SplitAddresses)
@@ -205,6 +208,8 @@ public sealed class BookingConfirmationEmailService(
         var section = configuration.GetSection("BookingEmail:AccountsTeamEmails");
         var raw = new List<string?> { section.Value };
         raw.AddRange(section.GetChildren().Select(c => c.Value));
+        // BookingEmail:AccountEmail is the accounts mailbox that receives every cancellation (CC) to refund manually.
+        raw.Add(configuration["BookingEmail:AccountEmail"]);
         return raw.SelectMany(SplitAddresses).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
