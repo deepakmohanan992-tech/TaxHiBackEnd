@@ -2,7 +2,7 @@
   Airport terminals under a vendor's sector. Additive and re-runnable; changes no table and no existing procedure.
 
     dbo.USP_GetAirportTerminals @VendorId, @Keyword, @CurrentPage, @PageSize
-      result set 1: the page of terminals
+      result set 1: the page of terminals (AirportTerminalId, AirportName = "Terminal, Airport", Latitude, Longitude, GooglePlaceId)
       result set 2: CurrentPage, PageSize, TotalRecords, TotalPages  (same shape as the other paged procedures)
 
   ASSUMED SCHEMA (adjust if your database differs; none of these is defined elsewhere in this repo):
@@ -42,7 +42,10 @@ BEGIN
 
     SELECT
         T.AirportTerminalId,
-        T.AirportName               -- the API returns these two as SelectedItems { Id, Value }
+        CONCAT(T.TerminalName, N', ', T.AirportName) AS AirportName,   -- API: Id / Value
+        T.Latitude,
+        T.Longitude,
+        T.GooglePlaceId                                               -- API: PlaceId
     FROM dbo.AirportTerminalMaster T
     WHERE T.IsActive = 1
       AND T.SectorId = @SectorId

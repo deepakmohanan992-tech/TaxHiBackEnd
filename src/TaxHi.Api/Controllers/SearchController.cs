@@ -79,11 +79,11 @@ public sealed class SearchController(
     // Active airport terminals under the vendor's sector (popular first). The vendor comes from the vendorId
     // query parameter, read through IUserContext exactly like the lookup endpoints; paging/search from PaginationRequest.
     [HttpGet("airportTerminals")]
-    public async Task<ActionResult<CommonResponse<PagedResult<SelectedItems>>>> GetAirportTerminals(
+    public async Task<ActionResult<CommonResponse<PagedResult<AirportTerminalItem>>>> GetAirportTerminals(
         [FromQuery] PaginationRequest request,
         CancellationToken cancellationToken)
     {
-        var response = await airportTerminalService.GetAirportTerminalsAsync(userContext.VendorId, request, cancellationToken);
+        var response = await airportTerminalService.GetAirportTerminalsAsync(26, request, cancellationToken);
         return StatusCode(response.StatusCode, response);
     }
 

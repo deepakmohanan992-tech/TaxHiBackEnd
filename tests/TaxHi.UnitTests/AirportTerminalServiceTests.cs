@@ -43,12 +43,12 @@ public class AirportTerminalServiceTests
     {
         public int Calls, VendorId; public string? Keyword;
 
-        public Task<PagedResult<SelectedItems>> GetAirportTerminalsAsync(int vendorId, PaginationRequest request, CancellationToken cancellationToken = default)
+        public Task<PagedResult<AirportTerminalItem>> GetAirportTerminalsAsync(int vendorId, PaginationRequest request, CancellationToken cancellationToken = default)
         {
             Calls++; VendorId = vendorId; Keyword = request.Keyword;
-            return Task.FromResult(new PagedResult<SelectedItems>
+            return Task.FromResult(new PagedResult<AirportTerminalItem>
             {
-                Items = [new SelectedItems { Id = 1, Value = "Cochin" }],
+                Items = [new AirportTerminalItem { Id = 1, Value = "Cochin", Latitude = 10.15m, Longitude = 76.39m, PlaceId = "ChIJabc" }],
                 CurrentPage = request.CurrentPage, PageSize = request.PageSize, TotalItems = 1, TotalPages = 1
             });
         }

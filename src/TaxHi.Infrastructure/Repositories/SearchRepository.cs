@@ -109,7 +109,7 @@ public sealed class SearchRepository(IDbConnection connection, IConfiguration co
         };
     }
 
-    public async Task<PagedResult<SelectedItems>> GetAirportTerminalsAsync(
+    public async Task<PagedResult<AirportTerminalItem>> GetAirportTerminalsAsync(
         int vendorId,
         PaginationRequest request,
         CancellationToken cancellationToken = default)
@@ -124,11 +124,18 @@ public sealed class SearchRepository(IDbConnection connection, IConfiguration co
         using var resultSets = await connection.QueryMultipleAsync(command);
         var rows = (await resultSets.ReadAsync<AirportTerminal>())
             .Where(row => !string.IsNullOrWhiteSpace(row.AirportName))
-            .Select(row => new SelectedItems { Id = row.AirportTerminalId, Value = row.AirportName.Trim() })
+            .Select(row => new AirportTerminalItem
+            {
+                Id = row.AirportTerminalId,
+                Value = row.AirportName.Trim(),
+                Latitude = row.Latitude,
+                Longitude = row.Longitude,
+                PlaceId = string.IsNullOrWhiteSpace(row.GooglePlaceId) ? null : row.GooglePlaceId.Trim()
+            })
             .ToList();
         var pagination = await resultSets.ReadSingleOrDefaultAsync<PaginationMetadata>();
 
-        return new PagedResult<SelectedItems>
+        return new PagedResult<AirportTerminalItem>
         {
             Items = rows,
             CurrentPage = pagination?.CurrentPage ?? request.CurrentPage,

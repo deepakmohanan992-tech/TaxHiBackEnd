@@ -14,7 +14,7 @@ public interface ISearchRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>Active airport terminals of the sector the vendor belongs to, popular first, searchable and paginated.</summary>
-    Task<PagedResult<SelectedItems>> GetAirportTerminalsAsync(
+    Task<PagedResult<AirportTerminalItem>> GetAirportTerminalsAsync(
         int vendorId,
         PaginationRequest request,
         CancellationToken cancellationToken = default);
