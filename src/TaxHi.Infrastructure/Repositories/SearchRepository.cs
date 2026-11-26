@@ -63,6 +63,7 @@ public sealed class SearchRepository(IDbConnection connection, IConfiguration co
 
     public async Task<PagedResult<AvailableCabListing>> GetAvailableCabListingAsync(
         AvailableCabListingRequestDto request,
+        decimal km,
         CancellationToken cancellationToken = default)
     {
         var keyword = NormalizeKeyword(request.Keyword);
@@ -70,8 +71,13 @@ public sealed class SearchRepository(IDbConnection connection, IConfiguration co
         parameters.Add("VendorId", request.VendorId, DbType.Int32);
         parameters.Add("FromDate", request.FromDate?.ToDateTime(TimeOnly.MinValue), DbType.Date);
         parameters.Add("ToDate", request.ToDate?.ToDateTime(TimeOnly.MinValue), DbType.Date);
-        parameters.Add("LocationFrom", request.LocationFrom, DbType.Int32);
-        parameters.Add("LocationTo", request.LocationTo, DbType.Int32);
+        parameters.Add("PickupPlaceId", request.PickupPlaceId?.Trim(), DbType.String, size: 300);
+        parameters.Add("PickupLatitude", request.PickupLatitude, DbType.Decimal, precision: 9, scale: 6);
+        parameters.Add("PickupLongitude", request.PickupLongitude, DbType.Decimal, precision: 9, scale: 6);
+        parameters.Add("DropPlaceId", request.DropPlaceId?.Trim(), DbType.String, size: 300);
+        parameters.Add("DropLatitude", request.DropLatitude, DbType.Decimal, precision: 9, scale: 6);
+        parameters.Add("DropLongitude", request.DropLongitude, DbType.Decimal, precision: 9, scale: 6);
+        parameters.Add("Km", km, DbType.Decimal, precision: 10, scale: 2);
         parameters.Add("VehicleType", ToCsv(request.VehicleType), DbType.String);
         parameters.Add("Seats", request.Seats, DbType.Int32);
         parameters.Add("Recommended", request.Recommended, DbType.Int32);

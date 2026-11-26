@@ -10,6 +10,7 @@ namespace TaxHi.Api.Controllers;
 public sealed class SearchController(
     ISearchRepository searchRepository,
     IAirportTerminalService airportTerminalService,
+    IRouteDistanceService routeDistanceService,
     IUserContext userContext) : ControllerBase
 {
     [HttpPost("locations")]
@@ -113,7 +114,44 @@ public sealed class SearchController(
             });
         }
 
-        var result = await searchRepository.GetAvailableCabListingAsync(request, cancellationToken);
+        // A coordinate pair must be complete; both pairs are optional (km is then 0).
+        if (request.PickupLatitude.HasValue != request.PickupLongitude.HasValue)
+        {
+            return BadRequest(new CommonResponse<PagedResult<AvailableCabListing>>
+            {
+                Success = false,
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = "PickupLatitude and PickupLongitude must be provided together.",
+                ErrorCode = "INVALID_PICKUP_COORDINATES"
+            });
+        }
+
+        if (request.DropLatitude.HasValue != request.DropLongitude.HasValue)
+        {
+            return BadRequest(new CommonResponse<PagedResult<AvailableCabListing>>
+            {
+                Success = false,
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = "DropLatitude and DropLongitude must be provided together.",
+                ErrorCode = "INVALID_DROP_COORDINATES"
+            });
+        }
+
+        // The procedure needs a pickup and a drop, each identified by a place id or by coordinates.
+        if (string.IsNullOrWhiteSpace(request.PickupPlaceId) && !request.PickupLatitude.HasValue
+            || string.IsNullOrWhiteSpace(request.DropPlaceId) && !request.DropLatitude.HasValue)
+        {
+            return BadRequest(new CommonResponse<PagedResult<AvailableCabListing>>
+            {
+                Success = false,
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = "Pickup and drop locations are required.",
+                ErrorCode = "LOCATIONS_REQUIRED"
+            });
+        }
+
+        var km = await routeDistanceService.CalculateKmAsync(request, cancellationToken);
+        var result = await searchRepository.GetAvailableCabListingAsync(request, km, cancellationToken);
 
         if (result.TotalItems == 0 || result.Items.Count == 0)
         {

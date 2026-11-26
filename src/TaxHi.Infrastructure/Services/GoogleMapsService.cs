@@ -126,6 +126,36 @@ public sealed partial class GoogleMapsService : IGoogleMapsService
 
     // ------------------------------------------------------------------ routes
 
+    public async Task<CommonResponse<decimal>> GetRoadDistanceKmAsync(
+        double pickupLatitude, double pickupLongitude, double dropLatitude, double dropLongitude, CancellationToken cancellationToken = default)
+    {
+        if (!IsValidCoordinate(pickupLatitude, pickupLongitude) || !IsValidCoordinate(dropLatitude, dropLongitude))
+            return Fail<decimal>(StatusCodes.Status400BadRequest, "Latitude/longitude are not valid.", "INVALID_COORDINATES");
+        if (!IsConfigured)
+            return NotConfigured<decimal>();
+
+        var body = new
+        {
+            origin = new { location = new { latLng = new { latitude = pickupLatitude, longitude = pickupLongitude } } },
+            destination = new { location = new { latLng = new { latitude = dropLatitude, longitude = dropLongitude } } },
+            travelMode = "DRIVE",
+            routingPreference = "TRAFFIC_UNAWARE",
+            units = "METRIC"
+        };
+
+        using var message = BuildRequest(HttpMethod.Post, Url(RoutesBaseUrl, "directions/v2:computeRoutes"), "routes.distanceMeters");
+        message.Content = JsonContent.Create(body);
+
+        var (json, error) = await SendAsync<decimal>(message, "road distance", cancellationToken);
+        if (error is not null) return error;
+
+        if (!json!.Value.TryGetProperty("routes", out var routes) || routes.ValueKind != JsonValueKind.Array || routes.GetArrayLength() == 0
+            || !routes[0].TryGetProperty("distanceMeters", out var meters))
+            return Fail<decimal>(StatusCodes.Status404NotFound, "No drivable route was found between the selected locations.", "ROUTE_NOT_FOUND");
+
+        return ResponseFactory.Success(Math.Round(meters.GetInt64() / 1000m, 2), "Distance calculated.");
+    }
+
     public async Task<CommonResponse<RouteResultDto>> ComputeRouteAsync(
         ComputeRouteRequest request, CancellationToken cancellationToken = default)
     {

@@ -10,6 +10,7 @@ public interface ISearchRepository
 
     Task<PagedResult<AvailableCabListing>> GetAvailableCabListingAsync(
         AvailableCabListingRequestDto request,
+        decimal km,
         CancellationToken cancellationToken = default);
 
     /// <summary>Active airport terminals of the sector the vendor belongs to, popular first, searchable and paginated.</summary>
