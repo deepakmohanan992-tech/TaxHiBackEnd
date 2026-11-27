@@ -15,7 +15,6 @@ public sealed class LookupRepository(IDbConnection connection) : ILookupReposito
             commandText: "USP_GetVehicleTypes",
             parameters: VendorParameters(vendorId),
             commandType: CommandType.StoredProcedure,
-            commandTimeout: 120,
             cancellationToken: cancellationToken);
 
         var rows = await connection.QueryAsync<VehicleType>(command);
@@ -37,7 +36,6 @@ public sealed class LookupRepository(IDbConnection connection) : ILookupReposito
             commandText: "USP_GetSeatingCapacity",
             parameters: VendorParameters(vendorId),
             commandType: CommandType.StoredProcedure,
-            commandTimeout: 120,
             cancellationToken: cancellationToken);
 
         var rows = await connection.QueryAsync<SeatingCapacity>(command);

@@ -17,6 +17,11 @@ public static class DependencyInjection
         var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("Connection string 'DefaultConnection' was not found.");
 
+        // One place for every database command timeout (individual repositories no longer set their own).
+        var commandTimeout = DatabaseSettings.CommandTimeoutSeconds(configuration);
+        if (commandTimeout is not (> 0 and <= 3600))
+            throw new InvalidOperationException("DatabaseSettings:CommandTimeoutSeconds must be between 1 and 3600.");
+        Dapper.SqlMapper.Settings.CommandTimeout = commandTimeout;
         services.AddScoped<IDbConnection>(_ => new SqlConnection(connectionString));
         services.AddHttpContextAccessor();
         services.AddScoped<IUserContext, UserContext>();
@@ -43,6 +48,16 @@ public static class DependencyInjection
         services.AddScoped<ITripContextService, TripContextService>();
         services.AddScoped<IBookingRouteRepository, BookingRouteRepository>();
         services.AddSingleton<IOtpNotifier, NullOtpNotifier>();
+        // Centralized API audit: the middleware only enqueues; a background writer persists (see database/ApiTransactionAudit.sql).
+        services.AddSingleton<ApiAuditQueue>();
+        services.AddSingleton<IApiAuditQueue>(sp => sp.GetRequiredService<ApiAuditQueue>());
+        services.AddScoped<IApiAuditRepository, ApiAuditRepository>();
+        if (AuditSettings.Enabled(configuration))
+            services.AddHostedService<ApiAuditWriterService>();
+        services.AddHostedService<BookingHoldExpiryService>();
+        if (ApiSettings.RequestTimeoutSeconds(configuration) is not (> 0 and <= 3600)
+            || ApiSettings.PaymentRequestTimeoutSeconds(configuration) is not (> 0 and <= 3600))
+            throw new InvalidOperationException("ApiSettings:RequestTimeoutSeconds and ApiSettings:PaymentRequestTimeoutSeconds must be between 1 and 3600.");
         services.AddOptions<AuthenticationOptions>()
             .Bind(configuration.GetSection("Authentication"))
             .Validate(options => options.JwtSigningKey.Length >= 32, "Authentication:JwtSigningKey must contain at least 32 characters.")

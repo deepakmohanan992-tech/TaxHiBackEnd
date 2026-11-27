@@ -202,6 +202,26 @@ public sealed class GatewayPaymentResult
     public decimal BalancePayableAmount { get; set; }
 }
 
+/// <summary>The customer closed / cancelled the payment window. Only the booking id is trusted; the user comes from the token.</summary>
+public sealed class CancelPaymentRequest
+{
+    public long BookingId { get; init; }
+    /// <summary>Optional short reason shown in the payment record (cancelled, closed, ...); never used for any decision.</summary>
+    public string? Reason { get; init; }
+}
+
+public sealed class PaymentCancellationResponse
+{
+    public long BookingId { get; set; }
+    public string? BookingNo { get; set; }
+    public string BookingStatus { get; set; } = string.Empty;
+    public string PaymentStatus { get; set; } = string.Empty;
+    /// <summary>True when the vehicle hold was released by this call (or had already been released).</summary>
+    public bool Released { get; set; }
+    /// <summary>True when the gateway showed the payment had actually succeeded; the booking is then confirmed, not released.</summary>
+    public bool AlreadyPaid { get; set; }
+}
+
 // ------------------------------------------------------------------ Cancellation
 
 public sealed class CancelBookingRequest

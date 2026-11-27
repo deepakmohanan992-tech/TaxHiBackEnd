@@ -36,8 +36,7 @@ public sealed partial class GoogleMapsService : IGoogleMapsService
         _configuration = configuration;
         _logger = logger;
         _client = client;
-        _client.Timeout = TimeSpan.FromSeconds(
-            int.TryParse(_configuration["GoogleMaps:HttpTimeoutSeconds"], out var t) && t > 0 ? t : 10);
+        _client.Timeout = ApiSettings.HttpTimeout(_configuration, "GoogleMaps");
     }
 
     // Read from appsettings.json / environment (GoogleMaps__ApiKey) on use.

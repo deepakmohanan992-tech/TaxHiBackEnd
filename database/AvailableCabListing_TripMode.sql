@@ -226,6 +226,7 @@ BEGIN
     DECLARE @AvailabilityFromDate DATE;
     DECLARE @AvailabilityToDate DATE;
     DECLARE @Days INT;
+    DECLARE @NowUtc DATETIME2(3) = SYSUTCDATETIME();
 
     DECLARE @StartRow BIGINT;
     DECLARE @TotalRecords BIGINT;
@@ -408,10 +409,26 @@ BEGIN
 
             FROM VehicleTripMaster T
 
+            -- A trip created for an online booking only blocks the vehicle while that booking is Confirmed (paid) or
+            -- Pending with an ACTIVE hold. Failed, cancelled, expired or released bookings free the vehicle.
+            -- Trips not linked to an online booking (created elsewhere) block exactly as before.
+            LEFT JOIN VehicleBookingMaster HVBM
+                ON HVBM.VehicleTripMasterId = T.VehicleTripMasterId
+
+            LEFT JOIN TaxHiBEBookings HB
+                ON HB.VehicleBookingMasterId = HVBM.VehicleBookingMasterId
+
             WHERE
                 T.VehicleDetailsId = VD.VehicleDetailsId
                 AND T.VendorId = VVM.VendorId
                 AND T.FromDate IS NOT NULL
+
+                AND
+                (
+                    HB.BookingId IS NULL
+                    OR HB.BookingStatus = 'Confirmed'
+                    OR (HB.BookingStatus = 'Pending' AND HB.HoldExpiresAtUtc > @NowUtc)
+                )
 
                 AND
                 (

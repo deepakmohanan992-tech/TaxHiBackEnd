@@ -11,6 +11,12 @@ public static class BookingSettings
     /// <summary>How long to wait for the per-vehicle application lock before returning 409.</summary>
     public static int LockTimeoutMilliseconds(IConfiguration c) => c.GetValue("Booking:LockTimeoutMilliseconds", 10000);
 
+    /// <summary>How often the background sweeper marks long-lapsed unpaid bookings as Failed. 0 turns the sweeper off.</summary>
+    public static int ExpirySweepIntervalSeconds(IConfiguration c) => c.GetValue("Booking:ExpirySweepIntervalSeconds", 60);
+
+    /// <summary>A lapsed hold is only turned into a Failed booking after this long, so a late gateway callback can still be re-validated.</summary>
+    public static int ExpiredHoldGraceMinutes(IConfiguration c) => c.GetValue("Booking:ExpiredHoldGraceMinutes", 60);
+
     /// <summary>Cancelling at least this many hours before pickup refunds the full amount paid.</summary>
     public static int FullRefundHoursBeforePickup(IConfiguration c) => c.GetValue("Booking:FullRefundHoursBeforePickup", 24);
 

@@ -117,7 +117,6 @@ public sealed class BookingRepository(IDbConnection connection, IConfiguration c
                 "USP_SaveBookingPayment",
                 parameters,
                 commandType: CommandType.StoredProcedure,
-                commandTimeout: 120,
                 cancellationToken: cancellationToken);
 
             // Retry handling
@@ -190,7 +189,6 @@ public sealed class BookingRepository(IDbConnection connection, IConfiguration c
             "USP_GetVendorConfiguration",
             parameters,
             commandType: CommandType.StoredProcedure,
-            commandTimeout: 60,
             cancellationToken: cancellationToken);
 
         using var resultSets = await connection.QueryMultipleAsync(command);
@@ -219,7 +217,7 @@ public sealed class BookingRepository(IDbConnection connection, IConfiguration c
             "USP_GetUserBookings",
             parameters,
             commandType: CommandType.StoredProcedure,
-            commandTimeout: 300,
+            commandTimeout: DatabaseSettings.LongCommandTimeoutSeconds(configuration),
             cancellationToken: cancellationToken);
 
         using var resultSets = await connection.QueryMultipleAsync(command);
@@ -282,6 +280,26 @@ public sealed class BookingRepository(IDbConnection connection, IConfiguration c
         return RunGatewayProcedureAsync("USP_ConfirmBookingGatewayPayment", parameters, cancellationToken);
     }
 
+    public Task<GatewayPaymentResult> CancelPaymentAttemptAsync(
+        long bookingId, long userId, string? reason, CancellationToken cancellationToken = default)
+    {
+        var parameters = new DynamicParameters();
+        parameters.Add("BookingId", bookingId is > 0 and <= int.MaxValue ? (int)bookingId : 0, DbType.Int32);
+        parameters.Add("UserId", userId, DbType.Int64);
+        parameters.Add("Reason", reason is { Length: > 500 } ? reason[..500] : reason, DbType.String, size: 500);
+        return RunGatewayProcedureAsync("USP_CancelBookingPayment", parameters, cancellationToken);
+    }
+
+    public async Task<int> ExpireLapsedHoldsAsync(int graceMinutes, int batchSize, CancellationToken cancellationToken = default)
+    {
+        var command = new CommandDefinition(
+            "USP_ExpireBookingHolds",
+            new { GraceMinutes = graceMinutes, BatchSize = batchSize },
+            commandType: CommandType.StoredProcedure,
+            cancellationToken: cancellationToken);
+        return await connection.QuerySingleAsync<int>(command);
+    }
+
     public Task<GatewayPaymentResult> FailGatewayPaymentAsync(
         string gatewayOrderId, string? gatewayPaymentId, string? reason,
         string? eventId, string? eventType, CancellationToken cancellationToken = default)
@@ -299,7 +317,7 @@ public sealed class BookingRepository(IDbConnection connection, IConfiguration c
         string procedure, DynamicParameters parameters, CancellationToken cancellationToken)
     {
         var command = new CommandDefinition(procedure, parameters, commandType: CommandType.StoredProcedure,
-            commandTimeout: 120, cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken);
 
         for (var attempt = 1; ; attempt++)
         {
@@ -343,7 +361,6 @@ public sealed class BookingRepository(IDbConnection connection, IConfiguration c
             "USP_CancelBooking",
             parameters,
             commandType: CommandType.StoredProcedure,
-            commandTimeout: 60,
             cancellationToken: cancellationToken));
     }
 

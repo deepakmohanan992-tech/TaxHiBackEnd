@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.AspNetCore.Mvc;
 using TaxHi.Application.Models;
 using TaxHi.Application.Models.Booking;
@@ -13,6 +14,7 @@ public sealed class BookingController(IBookingService bookingService, IBookingIn
 {
     // Guests can check out, matching the guest-booking flow in AuthenticationController.
     [Authorize]
+    [RequestTimeout("payment")]
     [HttpPost("SaveBookingPayment")]
     public async Task<ActionResult<CommonResponse<SaveBookingPaymentResponse>>> SaveBookingPayment(
         [FromBody] SaveBookingPaymentRequest request,

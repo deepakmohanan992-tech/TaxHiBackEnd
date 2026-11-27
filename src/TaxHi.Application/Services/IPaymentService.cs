@@ -16,6 +16,13 @@ public interface IPaymentService
     Task<CommonResponse<PaymentVerificationResponse>> VerifyPaymentAsync(
         VerifyRazorpayPaymentRequest request, int userId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The customer closed / cancelled the payment window. After checking with the gateway that the order was not in fact paid,
+    /// marks the attempt failed and releases the vehicle hold so other customers can book it. A paid booking is never touched.
+    /// </summary>
+    Task<CommonResponse<PaymentCancellationResponse>> CancelPaymentAsync(
+        CancelPaymentRequest request, int userId, CancellationToken cancellationToken = default);
+
     /// <summary>Processes a Razorpay webhook (raw body + signature header) idempotently.</summary>
     Task<CommonResponse<string>> HandleWebhookAsync(
         string rawBody, string? signature, string? eventId, CancellationToken cancellationToken = default);

@@ -99,6 +99,8 @@ public class VendorConfigurationTests
         public Task<GatewayPaymentResult> ConfirmGatewayPaymentAsync(string gatewayOrderId, string gatewayPaymentId, long? amountPaise, string? paymentMethod, string? eventId, string? eventType, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<BookingCancellationContext?> GetCancellationContextAsync(long bookingId, long userId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<BookingCancellationResult> CancelBookingAsync(long bookingId, long userId, long? tripId, string reason, string? remarks, decimal refundAmount, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<GatewayPaymentResult> CancelPaymentAttemptAsync(long bookingId, long userId, string? reason, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<int> ExpireLapsedHoldsAsync(int graceMinutes, int batchSize, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<GatewayPaymentResult> FailGatewayPaymentAsync(string gatewayOrderId, string? gatewayPaymentId, string? reason, string? eventId, string? eventType, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 }

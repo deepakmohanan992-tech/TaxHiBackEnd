@@ -41,7 +41,7 @@ public sealed class PaymentService(
     {
         var baseUrl = configuration["Razorpay:ApiBaseUrl"] is { Length: > 0 } u ? u : "https://api.razorpay.com/v1/";
         client.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/");
-        client.Timeout = TimeSpan.FromSeconds(int.TryParse(configuration["Razorpay:HttpTimeoutSeconds"], out var t) && t > 0 ? t : 20);
+        client.Timeout = ApiSettings.HttpTimeout(configuration, "Razorpay");
         var keyId = configuration["Razorpay:KeyId"];
         if (!string.IsNullOrEmpty(keyId))
             client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
@@ -109,6 +109,12 @@ public sealed class PaymentService(
             return ResponseFactory.Failure<RazorpayOrderResponse>(StatusCodes.Status502BadGateway,
                 "Unable to start the payment right now. Please try again.", "PAYMENT_GATEWAY_ERROR");
         }
+        catch (SqlException ex) when (SqlErrors.IsTimeout(ex) && !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Database timeout (SQL error {Number}).", ex.Number);
+            return ResponseFactory.Failure<RazorpayOrderResponse>(StatusCodes.Status504GatewayTimeout,
+                "The request took too long. Please try again.", "REQUEST_TIMEOUT");
+        }
         catch (SqlException ex) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogError(ex, "Database error while creating payment order (SQL error {Number}).", ex.Number);
@@ -155,11 +161,11 @@ public sealed class PaymentService(
                 case "AlreadyProcessed":
                     var alreadyProcessed = result.Outcome == "AlreadyProcessed";
                     var invoice = await invoiceService.EnsureInvoiceAsync(
-                        result.BookingId, result.UserId, result.BookingNo, regenerate: !alreadyProcessed, cancellationToken: cancellationToken);
+                        result.BookingId, result.UserId, result.BookingNo, regenerate: !alreadyProcessed, cancellationToken: CancellationToken.None);
                     // Only the call that actually confirmed the payment sends the email; a repeat verify or the
                     // webhook arriving later sees "AlreadyProcessed" and does not send a duplicate.
                     if (!alreadyProcessed)
-                        await SendConfirmationEmailAsync(result.BookingId, result.UserId, cancellationToken);
+                        await SendConfirmationEmailAsync(result.BookingId, result.UserId, CancellationToken.None);
                     return ResponseFactory.Success(new PaymentVerificationResponse
                     {
                         BookingId = result.BookingId,
@@ -198,11 +204,145 @@ public sealed class PaymentService(
             return ResponseFactory.Failure<PaymentVerificationResponse>(StatusCodes.Status409Conflict,
                 "Your payment is being processed. Please try again in a moment.", "PAYMENT_LOCK_TIMEOUT");
         }
+        catch (SqlException ex) when (SqlErrors.IsTimeout(ex) && !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Database timeout (SQL error {Number}).", ex.Number);
+            return ResponseFactory.Failure<PaymentVerificationResponse>(StatusCodes.Status504GatewayTimeout,
+                "Your payment is being processed and the request took too long. Please check your booking status or try again in a moment.", "REQUEST_TIMEOUT");
+        }
         catch (SqlException ex) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogError(ex, "Database error while confirming payment (SQL error {Number}).", ex.Number);
             return ResponseFactory.Failure<PaymentVerificationResponse>(StatusCodes.Status500InternalServerError,
                 "Unable to confirm the payment right now. Please try again.", "PAYMENT_CONFIRM_FAILED");
+        }
+    }
+
+    // ------------------------------------------------------------------ cancel / abandon
+
+    public async Task<CommonResponse<PaymentCancellationResponse>> CancelPaymentAsync(
+        CancelPaymentRequest request, int userId, CancellationToken cancellationToken = default)
+    {
+        if (userId <= 0)
+            return ResponseFactory.Failure<PaymentCancellationResponse>(StatusCodes.Status401Unauthorized, "Authentication is required.", "UNAUTHORIZED");
+        if (request is null || request.BookingId is <= 0 or > int.MaxValue)
+            return ResponseFactory.Failure<PaymentCancellationResponse>(StatusCodes.Status400BadRequest, "A valid BookingId is required.", "INVALID_BOOKING_ID");
+
+        try
+        {
+            var context = await repository.GetPaymentContextAsync(request.BookingId, null, cancellationToken);
+            // Same answer for "not yours" and "missing" so booking ids cannot be probed.
+            if (context is null || context.UserId != userId)
+                return ResponseFactory.Failure<PaymentCancellationResponse>(StatusCodes.Status404NotFound, "Booking not found.", "BOOKING_NOT_FOUND");
+
+            // A cancel from the browser is never taken at its word: if the gateway shows the order was paid,
+            // the payment is confirmed (re-validating the vehicle) instead of the hold being released.
+            if (context.PaymentStatus != "Success" && context.BookingStatus == "Pending"
+                && IsConfigured && !string.IsNullOrEmpty(context.PaymentGatewayOrderId))
+            {
+                var captured = await FindCapturedPaymentAsync(context.PaymentGatewayOrderId, cancellationToken);
+                if (captured is not null)
+                {
+                    // The money is real, so this database work is not tied to the request token.
+                    var confirmed = await repository.ConfirmGatewayPaymentAsync(
+                        context.PaymentGatewayOrderId, captured.Id, captured.AmountPaise, captured.Method,
+                        eventId: null, eventType: "checkout.cancel-check", CancellationToken.None);
+
+                    if (confirmed.Outcome == "Confirmed")
+                    {
+                        await invoiceService.EnsureInvoiceAsync(confirmed.BookingId, confirmed.UserId, confirmed.BookingNo, regenerate: true, cancellationToken: CancellationToken.None);
+                        await SendConfirmationEmailAsync(confirmed.BookingId, confirmed.UserId, CancellationToken.None);
+                    }
+
+                    if (confirmed.Outcome is "Confirmed" or "AlreadyProcessed")
+                        return ResponseFactory.Success(ToCancellation(confirmed, released: false, alreadyPaid: true),
+                            "The payment was already completed, so the booking is confirmed.");
+
+                    if (confirmed.Outcome == "RefundRequired")
+                    {
+                        logger.LogError("Payment {PaymentId} found for booking {BookingId} during cancel but the vehicle is no longer available; refund required.",
+                            captured.Id, confirmed.BookingId);
+                        return ResponseFactory.Failure<PaymentCancellationResponse>(StatusCodes.Status409Conflict,
+                            "Your payment was received but the vehicle is no longer available. A refund will be processed.", "PAYMENT_RECEIVED_BOOKING_UNAVAILABLE");
+                    }
+                }
+            }
+
+            var result = await repository.CancelPaymentAttemptAsync(context.BookingId, userId, request.Reason, cancellationToken);
+            switch (result.Outcome)
+            {
+                case "Released":
+                case "AlreadyReleased":
+                    return ResponseFactory.Success(ToCancellation(result, released: true, alreadyPaid: false),
+                        "The payment was cancelled and the vehicle has been released.");
+                case "AlreadyPaid":
+                    return ResponseFactory.Success(ToCancellation(result, released: false, alreadyPaid: true),
+                        "This booking is already paid and confirmed.");
+                case "NotFound":
+                    return ResponseFactory.Failure<PaymentCancellationResponse>(StatusCodes.Status404NotFound, "Booking not found.", "BOOKING_NOT_FOUND");
+                default:
+                    return ResponseFactory.Failure<PaymentCancellationResponse>(StatusCodes.Status409Conflict,
+                        "This booking can no longer be changed.", "BOOKING_NOT_PAYABLE");
+            }
+        }
+        catch (SqlException ex) when (SqlErrors.IsTimeout(ex) && !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Database timeout while cancelling payment for booking {BookingId}.", request.BookingId);
+            return ResponseFactory.Failure<PaymentCancellationResponse>(StatusCodes.Status504GatewayTimeout,
+                "The request took too long. Please try again.", "REQUEST_TIMEOUT");
+        }
+        catch (SqlException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogError(ex, "Database error while cancelling payment (SQL error {Number}).", ex.Number);
+            return ResponseFactory.Failure<PaymentCancellationResponse>(StatusCodes.Status500InternalServerError,
+                "Unable to cancel the payment right now. Please try again.", "PAYMENT_CANCEL_FAILED");
+        }
+    }
+
+    private static PaymentCancellationResponse ToCancellation(GatewayPaymentResult r, bool released, bool alreadyPaid) => new()
+    {
+        BookingId = r.BookingId,
+        BookingNo = r.BookingNo,
+        BookingStatus = r.BookingStatus ?? string.Empty,
+        PaymentStatus = r.PaymentStatus ?? string.Empty,
+        Released = released,
+        AlreadyPaid = alreadyPaid
+    };
+
+    private sealed record CapturedPayment(string Id, long AmountPaise, string? Method);
+
+    /// <summary>Asks Razorpay (server to server) for a captured payment on the order. Null when none, or when the lookup fails.</summary>
+    private async Task<CapturedPayment?> FindCapturedPaymentAsync(string orderId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await _client.GetAsync($"orders/{Uri.EscapeDataString(orderId)}/payments", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("Razorpay returned {Status} while checking order {OrderId} before releasing the hold.", (int)response.StatusCode, orderId);
+                return null;
+            }
+
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            if (!doc.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+                return null;
+
+            foreach (var item in items.EnumerateArray())
+            {
+                var id = Str(item, "id");
+                if (Str(item, "status") == "captured" && IsValidId(id) && item.TryGetProperty("amount", out var a) && a.TryGetInt64(out var amount))
+                {
+                    var method = Str(item, "method");
+                    return new CapturedPayment(id, amount, method.Length == 0 ? null : method);
+                }
+            }
+            return null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException || (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            // The hold is still released; a payment that really was in flight is re-validated when its callback arrives.
+            logger.LogWarning(ex, "Could not check Razorpay order {OrderId} before releasing the hold.", orderId);
+            return null;
         }
     }
 
@@ -264,8 +404,8 @@ public sealed class PaymentService(
 
             if (result.Outcome == "Confirmed")
             {
-                await invoiceService.EnsureInvoiceAsync(result.BookingId, result.UserId, result.BookingNo, regenerate: true, cancellationToken: cancellationToken);
-                await SendConfirmationEmailAsync(result.BookingId, result.UserId, cancellationToken);
+                await invoiceService.EnsureInvoiceAsync(result.BookingId, result.UserId, result.BookingNo, regenerate: true, cancellationToken: CancellationToken.None);
+                await SendConfirmationEmailAsync(result.BookingId, result.UserId, CancellationToken.None);
             }
 
             return Acknowledge(result, eventType, orderId);

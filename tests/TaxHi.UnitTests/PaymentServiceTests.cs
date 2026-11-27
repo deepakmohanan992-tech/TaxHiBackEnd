@@ -319,6 +319,92 @@ public class PaymentServiceTests
     private static VerifyRazorpayPaymentRequest Verify(string order, string payment, string sig) =>
         new() { RazorpayOrderId = order, RazorpayPaymentId = payment, RazorpaySignature = sig };
 
+    // ------------------------------------------------------------ cancel / abandon (hold release)
+    [Fact]
+    public async Task CancelPayment_ReleasesTheHold_WhenNothingWasPaid()
+    {
+        var f = new Fixture();
+        f.Repo.Context = Ctx(orderId: "order_1");
+        f.Http.Body = "{\"items\":[{\"id\":\"pay_1\",\"status\":\"failed\",\"amount\":300013}]}";
+        f.Repo.Cancel = Result("Released");
+
+        var response = await f.Service.CancelPaymentAsync(new CancelPaymentRequest { BookingId = 1 }, 7);
+
+        Assert.True(response.Success);
+        Assert.True(response.Data!.Released);
+        Assert.False(response.Data.AlreadyPaid);
+        Assert.Equal(1, f.Repo.CancelCalls);
+        Assert.Equal(0, f.Repo.ConfirmCalls);
+    }
+
+    [Fact]
+    public async Task CancelPayment_GatewayShowsCapturedPayment_ConfirmsInsteadOfReleasing()
+    {
+        var f = new Fixture();
+        f.Repo.Context = Ctx(orderId: "order_1");
+        f.Http.Body = "{\"items\":[{\"id\":\"pay_9\",\"status\":\"captured\",\"amount\":300013,\"method\":\"upi\"}]}";
+
+        var response = await f.Service.CancelPaymentAsync(new CancelPaymentRequest { BookingId = 1 }, 7);
+
+        Assert.True(response.Success);
+        Assert.True(response.Data!.AlreadyPaid);
+        Assert.False(response.Data.Released);
+        Assert.Equal(1, f.Repo.ConfirmCalls);
+        Assert.Equal(300013, f.Repo.LastAmountPaise);             // the amount comes from the gateway, never the browser
+        Assert.Equal(0, f.Repo.CancelCalls);
+        Assert.Contains("/orders/order_1/payments", f.Http.LastPath);
+    }
+
+    [Fact]
+    public async Task CancelPayment_GatewayLookupFails_StillReleasesTheHold()
+    {
+        var f = new Fixture();
+        f.Repo.Context = Ctx(orderId: "order_1");
+        f.Http.Status = HttpStatusCode.BadGateway;
+
+        var response = await f.Service.CancelPaymentAsync(new CancelPaymentRequest { BookingId = 1 }, 7);
+
+        Assert.True(response.Success);
+        Assert.Equal(1, f.Repo.CancelCalls);
+    }
+
+    [Fact]
+    public async Task CancelPayment_SomeoneElsesBooking_LooksLikeNotFound()
+    {
+        var f = new Fixture();
+        f.Repo.Context = Ctx(userId: 99);
+
+        var response = await f.Service.CancelPaymentAsync(new CancelPaymentRequest { BookingId = 1 }, 7);
+
+        Assert.False(response.Success);
+        Assert.Equal(404, response.StatusCode);
+        Assert.Equal(0, f.Repo.CancelCalls);
+    }
+
+    [Fact]
+    public async Task CancelPayment_AlreadyPaidBooking_IsNeverReleased()
+    {
+        var f = new Fixture();
+        f.Repo.Context = Ctx(paymentStatus: "Success", bookingStatus: "Confirmed");
+        f.Repo.Cancel = Result("AlreadyPaid");
+
+        var response = await f.Service.CancelPaymentAsync(new CancelPaymentRequest { BookingId = 1 }, 7);
+
+        Assert.True(response.Success);
+        Assert.True(response.Data!.AlreadyPaid);
+        Assert.False(response.Data.Released);
+        Assert.Equal(0, f.Http.Calls);                              // nothing to ask the gateway about
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-5)]
+    public async Task CancelPayment_RejectsInvalidBookingId(long bookingId)
+    {
+        var response = await new Fixture().Service.CancelPaymentAsync(new CancelPaymentRequest { BookingId = bookingId }, 7);
+        Assert.Equal(400, response.StatusCode);
+    }
+
     private static GatewayPaymentResult Result(string outcome) =>
         new() { Outcome = outcome, BookingId = 1, UserId = 7, BookingNo = "T1126-1", BookingStatus = "Confirmed", PaymentStatus = "Success", AmountPaid = 3000.13m };
 
@@ -360,12 +446,12 @@ public class PaymentServiceTests
 
     private sealed class FakeHandler : HttpMessageHandler
     {
-        public int Calls; public string LastBody = ""; public HttpStatusCode Status = HttpStatusCode.OK;
+        public int Calls; public string LastBody = "", LastPath = ""; public string? Body; public HttpStatusCode Status = HttpStatusCode.OK;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            Calls++;
+            Calls++; LastPath = request.RequestUri?.AbsolutePath ?? "";
             LastBody = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
-            return new HttpResponseMessage(Status) { Content = new StringContent("{\"id\":\"order_NEW1\",\"status\":\"created\"}") };
+            return new HttpResponseMessage(Status) { Content = new StringContent(Body ?? "{\"id\":\"order_NEW1\",\"status\":\"created\"}") };
         }
     }
 
@@ -379,6 +465,9 @@ public class PaymentServiceTests
         public Task<string> SetGatewayOrderAsync(long bookingPaymentId, string gatewayOrderId, CancellationToken cancellationToken = default) { SetOrderCalls++; return Task.FromResult(WinningOrderId ?? gatewayOrderId); }
         public Task<GatewayPaymentResult> ConfirmGatewayPaymentAsync(string gatewayOrderId, string gatewayPaymentId, long? amountPaise, string? paymentMethod, string? eventId, string? eventType, CancellationToken cancellationToken = default)
         { ConfirmCalls++; LastAmountPaise = amountPaise; LastEventId = eventId; LastMethod = paymentMethod; return Task.FromResult(Confirm); }
+        public GatewayPaymentResult Cancel = Result("Released"); public int CancelCalls;
+        public Task<GatewayPaymentResult> CancelPaymentAttemptAsync(long bookingId, long userId, string? reason, CancellationToken cancellationToken = default) { CancelCalls++; return Task.FromResult(Cancel); }
+        public Task<int> ExpireLapsedHoldsAsync(int graceMinutes, int batchSize, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<GatewayPaymentResult> FailGatewayPaymentAsync(string gatewayOrderId, string? gatewayPaymentId, string? reason, string? eventId, string? eventType, CancellationToken cancellationToken = default) { FailCalls++; return Task.FromResult(Fail); }
         public Task<SaveBookingPaymentResponse> SaveBookingPaymentAsync(SaveBookingPaymentRequest request, int userId, BookingAmounts amounts, string bookingNo, string tripCode, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<(VendorConfig? Config, IReadOnlyList<VendorItem> Items)> GetVendorConfigurationAsync(int? vendorId, int? vehicleBrandId, CancellationToken cancellationToken = default) => throw new NotImplementedException();

@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using TaxHi.Application.Models.Booking;
 using TaxHi.Application.Repositories;
 using TaxHi.Application.Services;
+using TaxHi.Infrastructure.Common;
 using TaxHi.Infrastructure.Template;
 
 namespace TaxHi.Infrastructure.Services;
@@ -159,7 +160,7 @@ public sealed class BookingConfirmationEmailService(
             DeliveryMethod = SmtpDeliveryMethod.Network,
             UseDefaultCredentials = false,
             Credentials = new NetworkCredential(d.GmailUserName!.Trim(), d.GmailAppPassword!.Trim()),
-            Timeout = 30_000
+            Timeout = (int)ApiSettings.HttpTimeout(configuration, "BookingEmail").TotalMilliseconds
         };
         await client.SendMailAsync(message, cancellationToken);
     }

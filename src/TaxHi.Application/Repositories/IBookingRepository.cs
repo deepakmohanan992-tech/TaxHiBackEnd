@@ -44,6 +44,13 @@ public interface IBookingRepository
         long bookingId, long userId, long? tripId, string reason, string? remarks,
         decimal refundAmount, CancellationToken cancellationToken = default);
 
+    /// <summary>Customer cancelled / abandoned the payment: marks the attempt failed and releases the vehicle hold. Never touches a paid booking.</summary>
+    Task<GatewayPaymentResult> CancelPaymentAttemptAsync(
+        long bookingId, long userId, string? reason, CancellationToken cancellationToken = default);
+
+    /// <summary>Marks unpaid bookings whose hold lapsed more than <paramref name="graceMinutes"/> ago as failed. Returns how many.</summary>
+    Task<int> ExpireLapsedHoldsAsync(int graceMinutes, int batchSize, CancellationToken cancellationToken = default);
+
     /// <summary>Records a failed attempt. Never downgrades a successful payment.</summary>
     Task<GatewayPaymentResult> FailGatewayPaymentAsync(
         string gatewayOrderId, string? gatewayPaymentId, string? reason,
