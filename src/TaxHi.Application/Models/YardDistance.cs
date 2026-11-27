@@ -11,10 +11,10 @@ public sealed class VendorYard
 }
 
 /// <summary>
-/// Road distances of one yard to the customer's pickup and drop. A null distance means "could not be resolved":
+/// Road distance of one yard to the customer's pickup (the drop is never measured). A null distance means "could not be resolved":
 /// the procedure never treats it as 0 km.
 /// </summary>
-public sealed record YardDistance(int YardId, decimal? ToPickupKm, decimal? ToDropKm);
+public sealed record YardDistance(int YardId, decimal? ToPickupKm);
 
 /// <summary>One airport charge applied to a listed vehicle.</summary>
 public sealed class AirportChargeItem

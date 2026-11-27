@@ -31,8 +31,6 @@ public sealed class AvailableCabListing
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? YardName { get; set; }
     /// <summary>Yard -> pickup road distance.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public decimal? YardToPickupKm { get; set; }
-    /// <summary>Drop -> yard road distance (Oneway and airport drop).</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public decimal? YardToDropKm { get; set; }
     /// <summary>OK, or YardDistanceMissing when no usable yard distance exists (the vehicle is then Unavailable).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? YardDistanceStatus { get; set; }
     /// <summary>Customer journey, pickup -> drop.</summary>

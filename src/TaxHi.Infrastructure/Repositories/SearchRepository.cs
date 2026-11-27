@@ -151,7 +151,6 @@ public sealed class SearchRepository(IDbConnection connection, IConfiguration co
         {
             var yard = new XElement("Yard", new XAttribute("Id", y.YardId));
             if (y.ToPickupKm is { } toPickup) yard.Add(new XAttribute("ToPickupKm", toPickup));
-            if (y.ToDropKm is { } toDrop) yard.Add(new XAttribute("ToDropKm", toDrop));
             return yard;
         })).ToString(SaveOptions.DisableFormatting);
 

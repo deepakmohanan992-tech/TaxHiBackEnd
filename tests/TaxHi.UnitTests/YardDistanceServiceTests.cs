@@ -19,29 +19,20 @@ public class YardDistanceServiceTests
     private static YardDistanceService Create(FakeRoute route, params VendorYard[] yards) =>
         new(new FakeRepo(yards), route, NullLogger<YardDistanceService>.Instance);
 
-    [Fact]
-    public async Task Oneway_resolves_yard_to_pickup_and_drop_to_yard()
+    [Theory]
+    [InlineData("Oneway", null)]
+    [InlineData("RoundTrip", null)]
+    [InlineData("Airport", "Pickup")]
+    [InlineData("Airport", "Drop")]
+    public async Task Only_yard_to_pickup_is_measured_in_every_mode(string mode, string? direction)
     {
         var route = new FakeRoute();
         var result = await Create(route, new VendorYard { YardId = 1, Latitude = 9.9m, Longitude = 76.2m })
-            .GetYardDistancesAsync(Request("Oneway"), Trip("Oneway"));
-
-        var yard = Assert.Single(result);
-        Assert.Equal(10m, yard.ToPickupKm);
-        Assert.Equal(40m, yard.ToDropKm);
-    }
-
-    [Theory]
-    [InlineData("RoundTrip", null, false)]
-    [InlineData("Airport", "Pickup", false)]
-    [InlineData("Airport", "Drop", true)]
-    public async Task Drop_distance_is_only_resolved_when_the_movement_needs_it(string mode, string? direction, bool needsDrop)
-    {
-        var result = await Create(new FakeRoute(), new VendorYard { YardId = 1, Latitude = 9.9m, Longitude = 76.2m })
             .GetYardDistancesAsync(Request(mode, direction), Trip(mode, direction));
 
-        Assert.NotNull(result.Single().ToPickupKm);
-        Assert.Equal(needsDrop, result.Single().ToDropKm is not null);
+        Assert.Equal(new YardDistance(1, 10m), Assert.Single(result));
+        Assert.Equal(1, route.Calls);
+        Assert.All(route.Lookups, l => Assert.Equal((9.99m, 76.30m), l.To)); // always the pickup, never the drop
     }
 
     [Fact]
@@ -51,7 +42,6 @@ public class YardDistanceServiceTests
 
         var yard = Assert.Single(result);
         Assert.Null(yard.ToPickupKm);
-        Assert.Null(yard.ToDropKm);
     }
 
     [Fact]
@@ -71,7 +61,7 @@ public class YardDistanceServiceTests
             .GetYardDistancesAsync(Request("Oneway"), Trip("Oneway"));
 
         Assert.Equal([1, 2, 3], result.Select(y => y.YardId));
-        Assert.Equal(4, route.Calls); // 2 locations x (pickup + drop)
+        Assert.Equal(2, route.Calls); // one yard -> pickup lookup per distinct location
     }
 
     private sealed class FakeRepo(VendorYard[] yards) : ISearchRepository
@@ -82,15 +72,17 @@ public class YardDistanceServiceTests
         public Task<PagedResult<AirportTerminalItem>> GetAirportTerminalsAsync(int vendorId, PaginationRequest request, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
-    // Pickup is the point (9.99, 76.30): any yard is 10 km from it, and 40 km from the drop (10.50, 76.60).
+    // Pickup is the point (9.99, 76.30): any yard is 10 km from it; any other pair is 40 km.
     private sealed class FakeRoute : IRouteDistanceService
     {
         public int Calls;
+        public List<((decimal? Lat, decimal? Lng) From, (decimal? Lat, decimal? Lng) To)> Lookups = [];
 
         public Task<decimal> CalculateKmAsync(AvailableCabListingRequestDto request, CancellationToken cancellationToken = default) => throw new NotImplementedException();
 
         public Task<decimal?> CalculateKmBetweenAsync(decimal? fromLatitude, decimal? fromLongitude, decimal? toLatitude, decimal? toLongitude, CancellationToken cancellationToken = default)
         {
+            lock (Lookups) Lookups.Add(((fromLatitude, fromLongitude), (toLatitude, toLongitude)));
             Interlocked.Increment(ref Calls);
             if (fromLatitude is null || toLatitude is null) return Task.FromResult<decimal?>(null);
             var touchesPickup = fromLatitude == 9.99m || toLatitude == 9.99m;

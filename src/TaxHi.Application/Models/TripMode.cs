@@ -30,8 +30,4 @@ public static class TripModes
         "DROP" => AirportDrop,
         _ => null
     };
-
-    /// <summary>Oneway and an airport drop end at the drop location, so the drop -> yard distance is needed too.</summary>
-    public static bool NeedsDropToYard(string? mode, string? airportDirection) =>
-        mode == Oneway || (mode == Airport && airportDirection == AirportDrop);
 }
