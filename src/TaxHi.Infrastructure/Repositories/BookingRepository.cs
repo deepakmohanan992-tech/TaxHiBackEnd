@@ -179,6 +179,26 @@ public sealed class BookingRepository(IDbConnection connection, IConfiguration c
 
 
 
+    public async Task<(VendorConfig? Config, IReadOnlyList<VendorItem> Items)> GetVendorConfigurationAsync(
+        int? vendorId, int? vehicleBrandId, CancellationToken cancellationToken = default)
+    {
+        var parameters = new DynamicParameters();
+        parameters.Add("VendorId", vendorId, DbType.Int32);
+        parameters.Add("VehicleBrandId", vehicleBrandId, DbType.Int32);
+
+        var command = new CommandDefinition(
+            "USP_GetVendorConfiguration",
+            parameters,
+            commandType: CommandType.StoredProcedure,
+            commandTimeout: 60,
+            cancellationToken: cancellationToken);
+
+        using var resultSets = await connection.QueryMultipleAsync(command);
+        var config = await resultSets.ReadFirstOrDefaultAsync<VendorConfig>();
+        var items = (await resultSets.ReadAsync<VendorItem>()).AsList();
+        return (config, items);
+    }
+
     public async Task<BookingListResponseDto> GetBookingsAsync(
     int userId,
     string mode,

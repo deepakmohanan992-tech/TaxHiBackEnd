@@ -132,6 +132,41 @@ public sealed partial class BookingService(
         }
     }
 
+    public async Task<CommonResponse<VendorConfigurationResponse>> GetVendorConfigurationAsync(
+        int? vendorId, int? vehicleBrandId, CancellationToken cancellationToken = default)
+    {
+        if (vendorId is null or <= 0)
+            return ResponseFactory.Failure<VendorConfigurationResponse>(StatusCodes.Status400BadRequest, "A valid VendorId is required.", "INVALID_VENDOR_ID");
+        if (vehicleBrandId is <= 0)
+            return ResponseFactory.Failure<VendorConfigurationResponse>(StatusCodes.Status400BadRequest, "VehicleBrandId must be greater than zero.", "INVALID_VEHICLE_BRAND_ID");
+
+        try
+        {
+            var (config, items) = await repository.GetVendorConfigurationAsync(vendorId, vehicleBrandId, cancellationToken);
+
+            static List<string> Texts(IEnumerable<VendorItem> rows, int type) =>
+                rows.Where(r => r.ItemType == type && !string.IsNullOrWhiteSpace(r.ItemText))
+                    .Select(r => r.ItemText.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+            var data = new VendorConfigurationResponse
+            {
+                ReturnTripRatePerc = config?.ReturnTripRatePerc ?? 0,
+                IsPartialPaymentAllowed = config?.IsPartialPaymentAllowed ?? false,
+                PartialPaymentPerc = config?.PartialPaymentPerc ?? 0,
+                Inclusions = Texts(items, 1),
+                Exclusions = Texts(items, 2)
+            };
+            return ResponseFactory.Success(data, "Vendor configuration retrieved successfully.");
+        }
+        catch (SqlException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogError(ex, "Database error while fetching vendor configuration (SQL error {Number}).", ex.Number);
+            return ResponseFactory.Failure<VendorConfigurationResponse>(StatusCodes.Status500InternalServerError, "Unable to fetch vendor configuration right now. Please try again.", "VENDOR_CONFIGURATION_FETCH_FAILED");
+        }
+    }
+
     // ------------------------------------------------------------------ cancellation
 
     private const string RefundPending = "Pending";

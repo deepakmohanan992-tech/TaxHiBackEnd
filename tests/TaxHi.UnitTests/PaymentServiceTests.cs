@@ -334,6 +334,7 @@ public class PaymentServiceTests
     {
         public CommonResponse<SaveBookingPaymentResponse> Result = new() { Success = true, StatusCode = 200, Data = new SaveBookingPaymentResponse { BookingId = 1 } };
         public Task<CommonResponse<SaveBookingPaymentResponse>> SaveBookingPaymentAsync(SaveBookingPaymentRequest request, int userId, CancellationToken cancellationToken = default) => Task.FromResult(Result);
+        public Task<CommonResponse<VendorConfigurationResponse>> GetVendorConfigurationAsync(int? vendorId, int? vehicleBrandId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<CommonResponse<BookingListResponseDto>> GetBookingsAsync(int userId, string? mode, int currentPage, int pageSize, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<CommonResponse<object>> SendCancellationOtpAsync(SendCancellationOtpRequest request, int userId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<CommonResponse<CancelBookingResponse>> CancelBookingAsync(CancelBookingRequest request, int userId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -380,6 +381,7 @@ public class PaymentServiceTests
         { ConfirmCalls++; LastAmountPaise = amountPaise; LastEventId = eventId; LastMethod = paymentMethod; return Task.FromResult(Confirm); }
         public Task<GatewayPaymentResult> FailGatewayPaymentAsync(string gatewayOrderId, string? gatewayPaymentId, string? reason, string? eventId, string? eventType, CancellationToken cancellationToken = default) { FailCalls++; return Task.FromResult(Fail); }
         public Task<SaveBookingPaymentResponse> SaveBookingPaymentAsync(SaveBookingPaymentRequest request, int userId, BookingAmounts amounts, string bookingNo, string tripCode, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<(VendorConfig? Config, IReadOnlyList<VendorItem> Items)> GetVendorConfigurationAsync(int? vendorId, int? vehicleBrandId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<BookingListResponseDto> GetBookingsAsync(int userId, string mode, int currentPage, int pageSize, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<BookingCancellationContext?> GetCancellationContextAsync(long bookingId, long userId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<BookingCancellationResult> CancelBookingAsync(long bookingId, long userId, long? tripId, string reason, string? remarks, decimal refundAmount, CancellationToken cancellationToken = default) => throw new NotImplementedException();

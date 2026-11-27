@@ -17,6 +17,10 @@ public interface IBookingService
         int pageSize,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Vendor-specific payment configuration plus inclusions and exclusions.</summary>
+    Task<CommonResponse<VendorConfigurationResponse>> GetVendorConfigurationAsync(
+        int? vendorId, int? vehicleBrandId, CancellationToken cancellationToken = default);
+
     /// <summary>Sends the cancellation OTP to the signed-in user's registered mobile number for one of their cancellable bookings.</summary>
     Task<CommonResponse<object>> SendCancellationOtpAsync(
         SendCancellationOtpRequest request,

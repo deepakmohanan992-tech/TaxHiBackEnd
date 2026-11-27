@@ -9,7 +9,7 @@ namespace TaxHi.Api.Controllers;
 
 [ApiController]
 [Route("api/Booking")]
-public sealed class BookingController(IBookingService bookingService, IBookingInvoiceService invoiceService) : ControllerBase
+public sealed class BookingController(IBookingService bookingService, IBookingInvoiceService invoiceService, IUserContext userContext) : ControllerBase
 {
     // Guests can check out, matching the guest-booking flow in AuthenticationController.
     [Authorize]
@@ -57,6 +57,17 @@ public sealed class BookingController(IBookingService bookingService, IBookingIn
     }
 
     private int CurrentUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+
+    // Public (like the cab search): payment rules and inclusions/exclusions of one vendor, optionally narrowed to one vehicle brand.
+    [AllowAnonymous]
+    [HttpGet("VendorConfiguration")]
+    public async Task<ActionResult<CommonResponse<VendorConfigurationResponse>>> VendorConfiguration(
+        [FromQuery] int? vehicleBrandId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await bookingService.GetVendorConfigurationAsync(userContext.VendorId, vehicleBrandId, cancellationToken);
+        return StatusCode(response.StatusCode, response);
+    }
 
     // Returns the signed-in user's own bookings for one tab (Upcoming / Current / History), matched on the user id in their token.
     [Authorize]

@@ -12,6 +12,10 @@ public interface IBookingRepository
         string tripCode,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Vendor config row (null when the vendor has none) and its active inclusion/exclusion items.</summary>
+    Task<(VendorConfig? Config, IReadOnlyList<VendorItem> Items)> GetVendorConfigurationAsync(
+        int? vendorId, int? vehicleBrandId, CancellationToken cancellationToken = default);
+
     Task<BookingListResponseDto> GetBookingsAsync(
         int userId,
         string mode,

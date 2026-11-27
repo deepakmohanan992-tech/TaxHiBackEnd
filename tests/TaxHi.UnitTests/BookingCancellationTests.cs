@@ -231,6 +231,7 @@ public class BookingCancellationTests
         public string? ReasonPassed;
 
         public Task<SaveBookingPaymentResponse> SaveBookingPaymentAsync(SaveBookingPaymentRequest request, int userId, BookingAmounts amounts, string bookingNo, string tripCode, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<(VendorConfig? Config, IReadOnlyList<VendorItem> Items)> GetVendorConfigurationAsync(int? vendorId, int? vehicleBrandId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<BookingListResponseDto> GetBookingsAsync(int userId, string mode, int currentPage, int pageSize, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<BookingPaymentContext?> GetPaymentContextAsync(long? bookingId, string? gatewayOrderId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<string> SetGatewayOrderAsync(long bookingPaymentId, string gatewayOrderId, CancellationToken cancellationToken = default) => throw new NotImplementedException();

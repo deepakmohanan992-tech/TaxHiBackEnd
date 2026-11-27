@@ -250,6 +250,31 @@ public sealed class BookingCancellationContext
     public string? PaymentGatewayPaymentId { get; set; }
 }
 
+/// <summary>Vendor-specific booking configuration with its inclusions and exclusions.</summary>
+public sealed class VendorConfigurationResponse
+{
+    public decimal ReturnTripRatePerc { get; set; }
+    public bool IsPartialPaymentAllowed { get; set; }
+    public decimal PartialPaymentPerc { get; set; }
+    public List<string> Inclusions { get; set; } = [];
+    public List<string> Exclusions { get; set; } = [];
+}
+
+/// <summary>Row of the first result set of USP_GetVendorConfiguration.</summary>
+public sealed class VendorConfig
+{
+    public decimal? ReturnTripRatePerc { get; set; }
+    public bool? IsPartialPaymentAllowed { get; set; }
+    public decimal? PartialPaymentPerc { get; set; }
+}
+
+/// <summary>Row of the second result set of USP_GetVendorConfiguration. ItemType 1 = inclusion, 2 = exclusion.</summary>
+public sealed class VendorItem
+{
+    public int ItemType { get; set; }
+    public string ItemText { get; set; } = string.Empty;
+}
+
 /// <summary>Result row of sp_CancelBooking. Outcome: Cancelled | NotFound | TripMismatch | NotCancellable.</summary>
 public sealed class BookingCancellationResult
 {
