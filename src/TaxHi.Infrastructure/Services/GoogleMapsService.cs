@@ -229,8 +229,8 @@ public sealed partial class GoogleMapsService : IGoogleMapsService
         // Full payment includes base fare and GST.
         var fullPay = baseFare + gst;
 
-        // Part payment is 25% of FullPay.
-        var partPay = fullPay * 0.25m;
+        // Part payment is 50% of FullPay.
+        var partPay = fullPay * 0.50m;
 
         return ResponseFactory.Success(new RouteResultDto
         {

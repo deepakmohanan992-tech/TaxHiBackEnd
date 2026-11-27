@@ -39,6 +39,8 @@ public static class DependencyInjection
         services.AddHttpClient<IPaymentService, PaymentService>();
         services.AddHttpClient<IGoogleMapsService, GoogleMapsService>();
         services.AddScoped<IRouteDistanceService, RouteDistanceService>();
+        services.AddScoped<IYardDistanceService, YardDistanceService>();
+        services.AddScoped<ITripContextService, TripContextService>();
         services.AddScoped<IBookingRouteRepository, BookingRouteRepository>();
         services.AddSingleton<IOtpNotifier, NullOtpNotifier>();
         services.AddOptions<AuthenticationOptions>()

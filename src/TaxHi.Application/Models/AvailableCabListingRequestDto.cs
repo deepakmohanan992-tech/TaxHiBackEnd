@@ -18,4 +18,7 @@ public sealed class AvailableCabListingRequestDto : PaginationRequest
     public List<int>? VehicleType { get; init; }
     public int Seats { get; init; } = -1;
     public int? Recommended { get; init; }
+
+    /// <summary>Oneway | RoundTrip | Airport | Local. Omitted (or Local) keeps the existing km-based pricing. The rate algorithm and airport terminal/direction are worked out by the API.</summary>
+    [StringLength(20)] public string? Mode { get; init; }
 }

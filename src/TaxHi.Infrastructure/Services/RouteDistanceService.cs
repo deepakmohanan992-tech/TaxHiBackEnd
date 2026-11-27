@@ -8,13 +8,18 @@ public sealed class RouteDistanceService(IGoogleMapsService mapsService, ILogger
 {
     private const double EarthRadiusKm = 6371.0088;
 
-    public async Task<decimal> CalculateKmAsync(AvailableCabListingRequestDto request, CancellationToken cancellationToken = default)
-    {
-        if (!IsUsable(request.PickupLatitude, request.PickupLongitude) || !IsUsable(request.DropLatitude, request.DropLongitude))
-            return 0m;
+    public async Task<decimal> CalculateKmAsync(AvailableCabListingRequestDto request, CancellationToken cancellationToken = default) =>
+        await CalculateKmBetweenAsync(request.PickupLatitude, request.PickupLongitude, request.DropLatitude, request.DropLongitude, cancellationToken) ?? 0m;
 
-        var (pLat, pLng, dLat, dLng) = ((double)request.PickupLatitude!.Value, (double)request.PickupLongitude!.Value,
-                                        (double)request.DropLatitude!.Value, (double)request.DropLongitude!.Value);
+    public async Task<decimal?> CalculateKmBetweenAsync(
+        decimal? fromLatitude, decimal? fromLongitude, decimal? toLatitude, decimal? toLongitude,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsUsable(fromLatitude, fromLongitude) || !IsUsable(toLatitude, toLongitude))
+            return null;
+
+        var (pLat, pLng, dLat, dLng) = ((double)fromLatitude!.Value, (double)fromLongitude!.Value,
+                                        (double)toLatitude!.Value, (double)toLongitude!.Value);
         if (pLat == dLat && pLng == dLng)
             return 0m;
 

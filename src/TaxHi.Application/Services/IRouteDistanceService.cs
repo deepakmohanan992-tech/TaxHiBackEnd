@@ -9,4 +9,10 @@ public interface IRouteDistanceService
     /// distance when Google is unavailable. 0 when either coordinate pair is missing / invalid or both points coincide.
     /// </summary>
     Task<decimal> CalculateKmAsync(AvailableCabListingRequestDto request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Road distance (Google, else straight line) between two coordinate pairs; null when either pair is missing or invalid.
+    /// Identical points give 0, which is a real distance.
+    /// </summary>
+    Task<decimal?> CalculateKmBetweenAsync(decimal? fromLatitude, decimal? fromLongitude, decimal? toLatitude, decimal? toLongitude, CancellationToken cancellationToken = default);
 }

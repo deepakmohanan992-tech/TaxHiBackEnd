@@ -54,6 +54,7 @@ public class AirportTerminalServiceTests
         }
 
         public Task<PagedResult<SelectedItems>> GetOutstationLocationsBySearchAsync(LocationSearchRequestDto request, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<PagedResult<AvailableCabListing>> GetAvailableCabListingAsync(AvailableCabListingRequestDto request, decimal km, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<IReadOnlyList<VendorYard>> GetVendorYardsAsync(int? vendorId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<PagedResult<AvailableCabListing>> GetAvailableCabListingAsync(AvailableCabListingRequestDto request, decimal km, TripContext? trip, IReadOnlyList<YardDistance>? yardDistances, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 }

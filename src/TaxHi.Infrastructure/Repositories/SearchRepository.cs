@@ -1,4 +1,5 @@
 using System.Data;
+using System.Xml.Linq;
 using Dapper;
 using Microsoft.Extensions.Configuration;
 using TaxHi.Application.Models;
@@ -64,6 +65,8 @@ public sealed class SearchRepository(IDbConnection connection, IConfiguration co
     public async Task<PagedResult<AvailableCabListing>> GetAvailableCabListingAsync(
         AvailableCabListingRequestDto request,
         decimal km,
+        TripContext? trip = null,
+        IReadOnlyList<YardDistance>? yardDistances = null,
         CancellationToken cancellationToken = default)
     {
         var keyword = NormalizeKeyword(request.Keyword);
@@ -85,6 +88,20 @@ public sealed class SearchRepository(IDbConnection connection, IConfiguration co
         parameters.Add("PageSize", request.PageSize, DbType.Int32);
         parameters.Add("Keyword", keyword, DbType.String);
 
+        // The trip-mode parameters are only sent for a trip mode, so a request without one calls the procedure
+        // exactly as before (and keeps working until the updated procedure is deployed).
+        if (trip is not null)
+        {
+            parameters.Add("Mode", trip.Mode, DbType.AnsiString, size: 20);
+            parameters.Add("RateAlgorithm", trip.RateAlgorithm, DbType.Int32);
+            if (trip.Mode == TripModes.Airport)
+            {
+                parameters.Add("AirportTerminalId", trip.AirportTerminalId, DbType.Int32);
+                parameters.Add("AirportDirection", trip.AirportDirection, DbType.AnsiString, size: 10);
+            }
+            parameters.Add("YardDistances", BuildYardDistancesXml(yardDistances), DbType.Xml);
+        }
+
         var command = new CommandDefinition(
             commandText: "USP_GetAvailableCabListing",
             parameters: parameters,
@@ -98,6 +115,17 @@ public sealed class SearchRepository(IDbConnection connection, IConfiguration co
         foreach (var row in rows)
             row.VehicleImageURL = BuildImageUrl(row.VehicleImageURL);
 
+        // Airport mode: third result set with the charge breakdown of the listed vehicles' brands.
+        if (trip?.Mode == TripModes.Airport && !resultSets.IsConsumed)
+        {
+            var charges = (await resultSets.ReadAsync<AirportChargeRow>()).AsList();
+            foreach (var row in rows)
+                row.AirportChargeItems = charges
+                    .Where(c => c.VendorId == row.VendorId && c.VehicleBrandId == row.VehicleBrandId)
+                    .Select(c => new AirportChargeItem { ChargeName = c.ChargeName, Amount = c.Amount })
+                    .ToList();
+        }
+
         return new PagedResult<AvailableCabListing>
         {
             Items = rows,
@@ -107,6 +135,34 @@ public sealed class SearchRepository(IDbConnection connection, IConfiguration co
             TotalPages = pagination?.TotalPages ?? (rows.Count == 0 ? 0 : 1),
             Keyword = keyword
         };
+    }
+
+    private sealed class AirportChargeRow
+    {
+        public int VendorId { get; set; }
+        public int VehicleBrandId { get; set; }
+        public string ChargeName { get; set; } = string.Empty;
+        public decimal Amount { get; set; }
+    }
+
+    /// <summary>&lt;Yards&gt;&lt;Yard Id ToPickupKm ToDropKm/&gt;&lt;/Yards&gt;. A distance that is not known is left out, never written as 0.</summary>
+    internal static string BuildYardDistancesXml(IReadOnlyList<YardDistance>? yardDistances) =>
+        new XElement("Yards", (yardDistances ?? []).Select(y =>
+        {
+            var yard = new XElement("Yard", new XAttribute("Id", y.YardId));
+            if (y.ToPickupKm is { } toPickup) yard.Add(new XAttribute("ToPickupKm", toPickup));
+            if (y.ToDropKm is { } toDrop) yard.Add(new XAttribute("ToDropKm", toDrop));
+            return yard;
+        })).ToString(SaveOptions.DisableFormatting);
+
+    public async Task<IReadOnlyList<VendorYard>> GetVendorYardsAsync(int? vendorId, CancellationToken cancellationToken = default)
+    {
+        var command = new CommandDefinition(
+            commandText: "USP_GetVendorYards",
+            parameters: new { VendorId = vendorId },
+            commandType: CommandType.StoredProcedure,
+            cancellationToken: cancellationToken);
+        return (await connection.QueryAsync<VendorYard>(command)).AsList();
     }
 
     public async Task<PagedResult<AirportTerminalItem>> GetAirportTerminalsAsync(

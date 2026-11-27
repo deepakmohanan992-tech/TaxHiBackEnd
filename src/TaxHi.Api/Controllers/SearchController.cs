@@ -11,6 +11,8 @@ public sealed class SearchController(
     ISearchRepository searchRepository,
     IAirportTerminalService airportTerminalService,
     IRouteDistanceService routeDistanceService,
+    IYardDistanceService yardDistanceService,
+    ITripContextService tripContextService,
     IUserContext userContext) : ControllerBase
 {
     [HttpPost("locations")]
@@ -87,6 +89,15 @@ public sealed class SearchController(
         return StatusCode(response.StatusCode, response);
     }
 
+    private BadRequestObjectResult TripModeError(string message, string errorCode) =>
+        BadRequest(new CommonResponse<PagedResult<AvailableCabListing>>
+        {
+            Success = false,
+            StatusCode = StatusCodes.Status400BadRequest,
+            Message = message,
+            ErrorCode = errorCode
+        });
+
     [HttpPost("availableCabListing")]
     public async Task<ActionResult<CommonResponse<PagedResult<AvailableCabListing>>>> GetAvailableCabListing(
         [FromBody] AvailableCabListingRequestDto request,
@@ -150,8 +161,34 @@ public sealed class SearchController(
             });
         }
 
+        // Trip mode (optional). No mode, or Local (reserved), keeps the existing km-based pricing untouched.
+        var mode = TripModes.Normalize(request.Mode);
+        if (!string.IsNullOrWhiteSpace(request.Mode) && mode is null)
+            return TripModeError("Mode must be Oneway, RoundTrip, Airport or Local.", "INVALID_MODE");
+
+        var tripMode = TripModes.UsesYardDistances(mode);
+        // Yard distances and the customer journey are measured from coordinates; a place id alone cannot be priced.
+        if (tripMode && (!request.PickupLatitude.HasValue || !request.DropLatitude.HasValue))
+            return TripModeError("Pickup and drop coordinates are required for the selected mode.", "COORDINATES_REQUIRED");
+
         var km = await routeDistanceService.CalculateKmAsync(request, cancellationToken);
-        var result = await searchRepository.GetAvailableCabListingAsync(request, km, cancellationToken);
+        if (tripMode && km <= 0)
+            return TripModeError("The distance between pickup and drop could not be calculated.", "DISTANCE_UNAVAILABLE");
+
+        // The rate algorithm and, for Airport mode, the terminal and direction are worked out here, not sent by the UI.
+        TripContext? trip = null;
+        IReadOnlyList<YardDistance>? yardDistances = null;
+        if (tripMode)
+        {
+            var resolved = await tripContextService.ResolveAsync(request, km, cancellationToken);
+            if (resolved is { Succeeded: false })
+                return TripModeError(resolved.ErrorMessage!, resolved.ErrorCode!);
+
+            trip = resolved!.Context!;
+            yardDistances = await yardDistanceService.GetYardDistancesAsync(request, trip, cancellationToken);
+        }
+
+        var result = await searchRepository.GetAvailableCabListingAsync(request, km, trip, yardDistances, cancellationToken);
 
         if (result.TotalItems == 0 || result.Items.Count == 0)
         {
