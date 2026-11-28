@@ -41,12 +41,25 @@ public class BookingConfirmationEmailTemplateTests
     {
         var html = BookingConfirmationEmailTemplate.BuildBody(Sample(), Branding);
 
-        Assert.Contains("Kochi → Munnar (130 km One Way)", html);
-        Assert.Contains("09:30 AM", html);
-        Assert.Contains("YOUR SAFETY IS OUR PRIORITY!", html);
-        Assert.Contains("Team TaxHi", html);
+        Assert.Contains("Kochi → Munnar (One Way)", html);
+        Assert.Contains("15-11-2026 09:30 AM", html);
+        Assert.Contains("BOOKING CONFIRMED", html);
+        Assert.Contains("Thank you for choosing <b>TaxHi</b>.", html);
         Assert.Contains("Asha &lt;b&gt;Nair&lt;/b&gt;", html);
         Assert.DoesNotContain("<b>Nair</b>", html);
-        Assert.DoesNotContain("9876541154", html);
+        Assert.DoesNotContain("98765 41154", html);
+        Assert.Contains("********1154", html);
+    }
+
+    [Fact]
+    public void Customer_and_vendor_bodies_share_the_same_structure()
+    {
+        // Strip text so only the tags/styles (the layout) remain; they must match exactly.
+        static string Skeleton(string html) => System.Text.RegularExpressions.Regex.Replace(html, ">[^<]*<", "><");
+
+        var customer = BookingConfirmationEmailTemplate.BuildBody(Sample(), Branding);
+        var vendor = BookingVendorConfirmationEmailTemplate.BuildBody(Sample(), Branding);
+
+        Assert.Equal(Skeleton(vendor), Skeleton(customer));
     }
 }

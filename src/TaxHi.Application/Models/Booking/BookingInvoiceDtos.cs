@@ -43,6 +43,8 @@ public sealed class BookingInvoiceDto
     public string? RegistrationNo { get; set; }
     public string? DriverName { get; set; }
     public string? DriverMobile { get; set; }
+    /// <summary>Absolute URL of the vehicle photo; optional (null until USP_GetBookingInvoiceData returns it).</summary>
+    public string? VehicleImageUrl { get; set; }
 
     // Fare
     public string? PaymentOption { get; set; }

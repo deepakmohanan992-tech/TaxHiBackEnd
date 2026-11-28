@@ -15,7 +15,7 @@ namespace TaxHi.Infrastructure.Services;
 /// <summary>
 /// Sends the booking confirmation through the vendor's Gmail account. Everything it needs (vendor SMTP
 /// credentials, user and vendor ids) is read from the database by booking id, so it works outside an HTTP
-/// session. It never throws: failures go to the vendor audit log and the application log.
+/// session. It never throws: failures go to the application log.
 /// </summary>
 public sealed class BookingConfirmationEmailService(
     IBookingEmailRepository repository,
@@ -23,10 +23,6 @@ public sealed class BookingConfirmationEmailService(
     IConfiguration configuration,
     ILogger<BookingConfirmationEmailService> logger) : IBookingConfirmationEmailService
 {
-    private const string SentAction = "BookingConfirmationEmailSent";
-    private const string FailedAction = "BookingConfirmationEmailFailed";
-    private const string CancellationSentAction = "BookingCancellationEmailSent";
-    private const string CancellationFailedAction = "BookingCancellationEmailFailed";
 
     /// <summary>Same vendor Gmail identity, branding and CC rule as the confirmation; no invoice attachment.</summary>
     public async Task SendBookingCancellationAsync(
@@ -76,49 +72,143 @@ public sealed class BookingConfirmationEmailService(
             }
 
             await SendAsync(message, details, cancellationToken);
-            await TryAuditAsync(details, CancellationSentAction, $"Booking {details.BookingNo}: cancellation email sent to {details.CustomerEmail}.");
+            logger.LogInformation("Booking {BookingNo}: cancellation email sent to {Recipient}.", details.BookingNo, details.CustomerEmail);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Booking cancellation email failed for booking {BookingId}.", bookingId);
-            await TryAuditAsync(details?.VendorId ?? 0, details?.UserId ?? userId, CancellationFailedAction,
-                $"Booking {details?.BookingNo ?? bookingId.ToString()}: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
+    /// <summary>
+    /// Sends the customer and the vendor confirmation. The two sends are independent: each has its own
+    /// try/catch and duplicate guard, so one failing never stops the other.
+    /// </summary>
     public async Task SendBookingConfirmationAsync(long bookingId, long userId, CancellationToken cancellationToken = default)
     {
-        BookingConfirmationEmailDto? details = null;
+        BookingConfirmationEmailDto? details;
         try
         {
             details = await repository.GetConfirmationEmailDetailsAsync(bookingId, userId, cancellationToken);
-            if (details is null)
-            {
-                logger.LogWarning("Confirmation email skipped: booking {BookingId} not found for user {UserId}.", bookingId, userId);
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(details.CustomerEmail))
-                throw new InvalidOperationException("The booking has no customer email address.");
-            if (string.IsNullOrWhiteSpace(details.GmailUserName) || string.IsNullOrWhiteSpace(details.GmailAppPassword))
-                throw new InvalidOperationException($"Vendor {details.VendorId} has no Gmail credentials configured.");
-
-            var branding = LoadBranding(details);
-            using var message = BuildMessage(details, branding);
-            await SendAsync(message, details, cancellationToken);
-
-            await TryAuditAsync(details, SentAction, $"Booking {details.BookingNo}: confirmation email sent to {details.CustomerEmail}.");
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Booking confirmation email failed for booking {BookingId}.", bookingId);
-            // The vendor id is only known once the booking has been read; 0 marks "unknown".
-            await TryAuditAsync(details?.VendorId ?? 0, details?.UserId ?? userId, FailedAction,
-                $"Booking {details?.BookingNo ?? bookingId.ToString()}: {ex.GetType().Name}: {ex.Message}");
+            return;
+        }
+
+        if (details is null)
+        {
+            logger.LogWarning("Confirmation email skipped: booking {BookingId} not found for user {UserId}.", bookingId, userId);
+            return;
+        }
+
+        await Task.WhenAll(
+            SendOnceAsync(details, "customer", SendCustomerAsync, cancellationToken),
+            SendOnceAsync(details, "vendor", SendVendorAsync, cancellationToken));
+    }
+
+    /// <summary>
+    /// Runs one confirmation send at most once per booking: an in-process claim stops concurrent duplicates
+    /// (webhook + verify racing; in memory only, so it resets on restart). A failed send releases the claim.
+    /// </summary>
+    private async Task SendOnceAsync(
+        BookingConfirmationEmailDto d, string kind,
+        Func<BookingConfirmationEmailDto, CancellationToken, Task<string>> send, CancellationToken cancellationToken)
+    {
+        var key = $"{d.BookingId}:{kind}";
+        if (!ClaimedSends.TryAdd(key, 0))
+        {
+            logger.LogInformation("The {Kind} confirmation email for booking {BookingNo} is already sent or in progress; skipping.", kind, d.BookingNo);
+            return;
+        }
+
+        var keep = false;
+        try
+        {
+            var recipient = await send(d, cancellationToken);
+            keep = true;
+            logger.LogInformation("Booking {BookingNo}: {Kind} confirmation email sent to {Recipient}.", d.BookingNo, kind, recipient);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Booking {Kind} confirmation email failed for booking {BookingId}.", kind, d.BookingId);
+        }
+        finally
+        {
+            if (!keep) ClaimedSends.TryRemove(key, out _);
         }
     }
 
-    private MailMessage BuildMessage(BookingConfirmationEmailDto d, BookingEmailBranding branding)
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> ClaimedSends = new();
+
+    private async Task<string> SendCustomerAsync(BookingConfirmationEmailDto d, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(d.CustomerEmail))
+            throw new InvalidOperationException("The booking has no customer email address.");
+        RequireCredentials(d);
+
+        var branding = LoadBranding(d);
+        using var message = BuildCustomerMessage(d, branding);
+        await SendAsync(message, d, cancellationToken);
+        return d.CustomerEmail.Trim();
+    }
+
+    private async Task<string> SendVendorAsync(BookingConfirmationEmailDto d, CancellationToken cancellationToken)
+    {
+        // The vendor's registered email; reservation staff is the fallback when no contact person is set.
+        var to = SplitAddresses(d.ContactPersonEmail).ToList();
+        if (to.Count == 0) to = SplitAddresses(d.ReservationStaffEmail).ToList();
+        if (to.Count == 0)
+            throw new InvalidOperationException($"Vendor {d.VendorId} has no registered email address.");
+        RequireCredentials(d);
+
+        var branding = LoadBranding(d);
+        using var message = new MailMessage
+        {
+            From = new MailAddress(d.GmailUserName!.Trim(), string.IsNullOrWhiteSpace(d.VendorName) ? branding.BrandName : d.VendorName.Trim()),
+            Subject = BookingVendorConfirmationEmailTemplate.BuildSubject(d),
+            SubjectEncoding = Encoding.UTF8,
+            BodyEncoding = Encoding.UTF8,
+            IsBodyHtml = true,
+            Body = BookingVendorConfirmationEmailTemplate.BuildBody(d, branding)
+        };
+        foreach (var address in to) message.To.Add(new MailAddress(address));
+        AddAccountCc(message);
+
+        var pdfPath = invoiceService.ResolveExistingInvoicePath(BookingInvoiceService.VendorInvoiceFileName(d.BookingNo));
+        if (pdfPath is null)
+        {
+            // Invoices generated before the vendor statement existed: rebuild once, then re-check.
+            await invoiceService.EnsureInvoiceAsync(d.BookingId, d.UserId, d.BookingNo, regenerate: true, cancellationToken: CancellationToken.None);
+            pdfPath = invoiceService.ResolveExistingInvoicePath(BookingInvoiceService.VendorInvoiceFileName(d.BookingNo));
+        }
+
+        if (pdfPath is null)
+            logger.LogWarning("Vendor invoice PDF not found for booking {BookingId}; sending the vendor email without it.", d.BookingId);
+        else
+            message.Attachments.Add(new Attachment(pdfPath, MediaTypeNames.Application.Pdf) { Name = $"{SafeFileName(d.BookingNo)}-vendor.pdf" });
+
+        await SendAsync(message, d, cancellationToken);
+        return string.Join(", ", to);
+    }
+
+    private static void RequireCredentials(BookingConfirmationEmailDto d)
+    {
+        if (string.IsNullOrWhiteSpace(d.GmailUserName) || string.IsNullOrWhiteSpace(d.GmailAppPassword))
+            throw new InvalidOperationException($"Vendor {d.VendorId} has no Gmail credentials configured.");
+    }
+
+    /// <summary>CC the account mailbox from BookingEmail:AccountEmail (never hardcoded), skipping addresses already on To.</summary>
+    private void AddAccountCc(MailMessage message)
+    {
+        var existing = message.To.Select(a => a.Address).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var cc in SplitAddresses(configuration["BookingEmail:AccountEmail"]).Distinct(StringComparer.OrdinalIgnoreCase))
+            if (!existing.Contains(cc))
+                message.CC.Add(new MailAddress(cc));
+    }
+
+    private MailMessage BuildCustomerMessage(BookingConfirmationEmailDto d, BookingEmailBranding branding)
     {
         var message = new MailMessage
         {
@@ -131,15 +221,7 @@ public sealed class BookingConfirmationEmailService(
         };
 
         message.To.Add(new MailAddress(d.CustomerEmail!.Trim()));
-
-        // Same CC rule as the legacy SendMail: reservation staff and contact person, when present.
-        foreach (var cc in new[] { d.ReservationStaffEmail, d.ContactPersonEmail }
-                     .SelectMany(SplitAddresses)
-                     .Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            if (!string.Equals(cc, d.CustomerEmail.Trim(), StringComparison.OrdinalIgnoreCase))
-                message.CC.Add(new MailAddress(cc));
-        }
+        AddAccountCc(message);
 
         // The invoice is generated before this runs; a missing PDF degrades to an email without attachment.
         var pdfPath = invoiceService.ResolveExistingInvoicePath(d.InvoiceFilePath);
@@ -183,23 +265,6 @@ public sealed class BookingConfirmationEmailService(
             Get("HelplineEmail") ?? configuration["Invoice:SupportEmail"] ?? "");
     }
 
-    private Task TryAuditAsync(BookingConfirmationEmailDto d, string action, string text) =>
-        TryAuditAsync(d.VendorId, d.UserId, action, text);
-
-    /// <summary>Audit writing is best effort too: a logging problem must not surface either.</summary>
-    private async Task TryAuditAsync(int vendorId, long userId, string action, string text)
-    {
-        try
-        {
-            // CancellationToken.None: the request may already be aborted, the audit row is still wanted.
-            await repository.SaveAuditLogAsync(vendorId, userId, action, Truncate(text, 2000), CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Could not write the booking email audit log ({Action}).", action);
-        }
-    }
-
     /// <summary>
     /// BookingEmail:AccountsTeamEmails, either one string ("a@x.com" or "a@x.com;b@x.com", comma or semicolon separated)
     /// or a JSON array. Invalid addresses are ignored.
@@ -226,5 +291,4 @@ public sealed class BookingConfirmationEmailService(
         return string.IsNullOrWhiteSpace(cleaned) ? "booking" : cleaned;
     }
 
-    private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
 }

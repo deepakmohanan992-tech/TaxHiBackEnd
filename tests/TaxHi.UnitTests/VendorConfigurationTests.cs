@@ -12,7 +12,7 @@ namespace TaxHi.UnitTests;
 public class VendorConfigurationTests
 {
     private static BookingService Create(FakeRepo repo) =>
-        new(repo, null!, null!, null!, null!, null!, Options.Create(new AuthenticationOptions { JwtSigningKey = new string('k', 40) }),
+        new(repo, null!, null!, null!, null!, Options.Create(new AuthenticationOptions { JwtSigningKey = new string('k', 40) }),
             null!, new ConfigurationBuilder().Build(), NullLogger<BookingService>.Instance);
 
     [Theory]

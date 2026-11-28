@@ -63,22 +63,16 @@ public sealed class BookingInvoiceService(
             if (!TryResolve(relativePath, out var fullPath))
                 throw new InvalidOperationException($"Invoice path for booking {data.BookingNo} is outside the storage folder.");
 
-            var pdf = new BookingInvoiceDocument(data, configuration, LoadLogo()).GeneratePdf();
+            var logo = LoadLogo();
+            var vehicleImage = await LoadVehicleImageAsync(data.VehicleImageUrl, cancellationToken);
 
-            // Write to a temp file, then swap it in, so a reader never sees a half-written PDF.
-            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-            var tempPath = $"{fullPath}.{Guid.NewGuid():N}.tmp";
-            try
-            {
-                await File.WriteAllBytesAsync(tempPath, pdf, cancellationToken);
-                File.Move(tempPath, fullPath, overwrite: true);
-            }
-            finally
-            {
-                if (File.Exists(tempPath)) File.Delete(tempPath);
-            }
+            // The customer invoice is the one tracked on the booking; it must succeed for the booking to have an invoice.
+            await WritePdfAsync(fullPath, new CustomerInvoiceDocument(data, configuration, logo, vehicleImage).GeneratePdf(), cancellationToken);
 
             await repository.SaveInvoicePathAsync(bookingId, relativePath, cancellationToken);
+
+            // The vendor statement is best effort and sits beside the customer file (<BookingNo>-vendor.pdf).
+            await TryWriteVendorInvoiceAsync(data, logo, vehicleImage, cancellationToken);
 
             result.InvoiceGenerated = true;
             result.InvoiceUrl = DownloadUrl(bookingId);
@@ -139,6 +133,58 @@ public sealed class BookingInvoiceService(
     }
 
     // ---------------------------------------------------------------- helpers
+
+    public static string VendorInvoiceFileName(string bookingNo) => $"{SafeFileName(bookingNo)}-vendor.pdf";
+
+    private async Task TryWriteVendorInvoiceAsync(BookingInvoiceDto data, byte[]? logo, byte[]? vehicleImage, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!TryResolve(VendorInvoiceFileName(data.BookingNo), out var vendorPath)) return;
+            await WritePdfAsync(vendorPath, new VendorInvoiceDocument(data, configuration, logo, vehicleImage).GeneratePdf(), cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Vendor invoice generation failed for booking {BookingNo}; the customer invoice is unaffected.", data.BookingNo);
+        }
+    }
+
+    /// <summary>Write to a temp file, then swap it in, so a reader never sees a half-written PDF.</summary>
+    private static async Task WritePdfAsync(string fullPath, byte[] pdf, CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        var tempPath = $"{fullPath}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            await File.WriteAllBytesAsync(tempPath, pdf, cancellationToken);
+            File.Move(tempPath, fullPath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(tempPath)) File.Delete(tempPath);
+        }
+    }
+
+    private static readonly HttpClient ImageClient = new() { Timeout = TimeSpan.FromSeconds(5) };
+
+    /// <summary>Best-effort vehicle photo for the PDFs; any problem yields null and the PDF shows a placeholder.</summary>
+    private async Task<byte[]?> LoadVehicleImageAsync(string? url, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        try
+        {
+            if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")) return null;
+            using var response = await ImageClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength is > 5_000_000) return null;
+            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            return bytes.Length is > 0 and <= 5_000_000 ? bytes : null;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Vehicle image could not be loaded for the invoice; using the placeholder.");
+            return null;
+        }
+    }
 
     private string StorageRoot =>
         Path.GetFullPath(Path.IsPathRooted(StoragePath)

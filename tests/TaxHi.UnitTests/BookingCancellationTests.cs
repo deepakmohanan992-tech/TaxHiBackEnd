@@ -14,14 +14,14 @@ public class BookingCancellationTests
 {
     private sealed record Rig(BookingService Service, FakeCancelRepo Repo, FakeAuthRepo Auth, FakeCancelEmail Email, FakeNotifier Notifier);
 
-    private static Rig CreateRig(BookingCancellationContext? context, bool otpValid = true, bool emailThrows = false, bool auditThrows = false)
+    private static Rig CreateRig(BookingCancellationContext? context, bool otpValid = true, bool emailThrows = false)
     {
         var repo = new FakeCancelRepo { Context = context };
         var auth = new FakeAuthRepo { OtpValid = otpValid };
         var email = new FakeCancelEmail { Throw = emailThrows };
         var notifier = new FakeNotifier();
         var authOptions = Options.Create(new AuthenticationOptions { JwtSigningKey = new string('k', 40) });
-        var service = new BookingService(repo, null!, null!, new FakeAudit { Throw = auditThrows }, auth, notifier, authOptions,
+        var service = new BookingService(repo, null!, null!, auth, notifier, authOptions,
             email, new ConfigurationBuilder().Build(), NullLogger<BookingService>.Instance);
         return new Rig(service, repo, auth, email, notifier);
     }
@@ -113,7 +113,7 @@ public class BookingCancellationTests
         Assert.Equal("OTHER_REASON_REQUIRED", missing.ErrorCode);
         Assert.False(rig.Repo.CancelCalled);
 
-        var ok = await rig.Service.CancelBookingAsync(new CancelBookingRequest { BookingId = 5, Reason = "Other", OtherReason = "Flight cancelled", Otp = "123456" }, 7);
+        var ok = await rig.Service.CancelBookingAsync(new CancelBookingRequest { BookingId = 5, Reason = "Other", Remarks = "Flight cancelled", Otp = "123456" }, 7);
         Assert.True(ok.Success);
         Assert.Equal("Other: Flight cancelled", rig.Repo.ReasonPassed);
     }
@@ -169,9 +169,9 @@ public class BookingCancellationTests
     }
 
     [Fact]
-    public async Task Email_and_audit_failures_never_fail_the_cancellation()
+    public async Task Email_failure_never_fails_the_cancellation()
     {
-        var rig = CreateRig(Ctx(48), emailThrows: true, auditThrows: true);
+        var rig = CreateRig(Ctx(48), emailThrows: true);
 
         var response = await rig.Service.CancelBookingAsync(Req(), 7);
 
@@ -267,14 +267,6 @@ public class BookingCancellationTests
             LastInfo = info;
             return Throw ? throw new InvalidOperationException("smtp down") : Task.CompletedTask;
         }
-    }
-
-    private sealed class FakeAudit : IBookingEmailRepository
-    {
-        public bool Throw;
-        public Task<BookingConfirmationEmailDto?> GetConfirmationEmailDetailsAsync(long bookingId, long userId, CancellationToken cancellationToken = default) => Task.FromResult<BookingConfirmationEmailDto?>(null);
-        public Task SaveAuditLogAsync(int vendorId, long userId, string actionName, string details, CancellationToken cancellationToken = default) =>
-            Throw ? throw new InvalidOperationException("audit down") : Task.CompletedTask;
     }
 
     private sealed class FakeNotifier : IOtpNotifier

@@ -20,7 +20,6 @@ public sealed partial class BookingService(
     IBookingRepository repository,
     IBookingInvoiceService invoiceService,
     IBookingRouteRepository routeRepository,
-    IBookingEmailRepository emailRepository,
     IAuthenticationRepository authenticationRepository,
     IOtpNotifier otpNotifier,
     IOptions<AuthenticationOptions> authenticationOptions,
@@ -28,7 +27,7 @@ public sealed partial class BookingService(
     IConfiguration configuration,
     ILogger<BookingService> logger) : IBookingService
 {
-    private const decimal PartPayPercent = 25m;
+    private const decimal PartPayPercent = 50m;
     private const decimal Tolerance = 0.01m;
 
     [GeneratedRegex(@"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$")]
@@ -302,13 +301,10 @@ public sealed partial class BookingService(
         }
 
         // From here the cancellation is committed. Nothing below may fail it, and a client disconnect must not
-        // skip the refund or the audit, so none of it observes the request's cancellation token.
+        // skip the refund, so none of it observes the request's cancellation token.
         var cancelledDate = DateTime.SpecifyKind(result.CancelledDateUtc ?? DateTime.UtcNow, DateTimeKind.Utc).ToLocalTime();
         // Refunds are paid manually by the accounts team; the cancellation email tells them what is due.
         var refundStatus = result.RefundStatus;
-
-        await TryAuditAsync(context.VendorId, userId, "BookingCancelled",
-            $"Booking {context.BookingNo}: cancelled by user {userId}. Reason: {reason}. Remarks: {remarks ?? "-"}. Refund due: {result.RefundAmount:0.00} ({refundStatus}, manual).");
 
         try
         {
@@ -359,19 +355,6 @@ public sealed partial class BookingService(
         if (hoursToPickup >= BookingSettings.FullRefundHoursBeforePickup(configuration)) return Round(c.AmountPaid);
         if (hoursToPickup >= BookingSettings.PartialRefundHoursBeforePickup(configuration)) return Round(c.AmountPaid * Math.Clamp(BookingSettings.PartialRefundPercent(configuration), 0m, 100m) / 100m);
         return 0m;
-    }
-
-    /// <summary>Audit writing is best effort: a logging problem must not surface.</summary>
-    private async Task TryAuditAsync(int vendorId, long userId, string action, string text)
-    {
-        try
-        {
-            await emailRepository.SaveAuditLogAsync(vendorId, userId, action, text.Length <= 2000 ? text : text[..2000], CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Could not write the booking audit log ({Action}).", action);
-        }
     }
 
     private static (string Message, string Code)? Validate(SaveBookingPaymentRequest r, out BookingAmounts? amounts)

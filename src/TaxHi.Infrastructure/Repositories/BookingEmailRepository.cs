@@ -21,16 +21,4 @@ public sealed class BookingEmailRepository(IDbConnection connection) : IBookingE
 
         return await connection.QuerySingleOrDefaultAsync<BookingConfirmationEmailDto>(command);
     }
-
-    public async Task SaveAuditLogAsync(
-        int vendorId, long userId, string actionName, string details, CancellationToken cancellationToken = default)
-    {
-        var command = new CommandDefinition(
-            "SaveTransportVendorAuditLog",
-            new { VendorId = vendorId, UserId = userId, ActionName = actionName, Details = details },
-            commandType: CommandType.StoredProcedure,
-            cancellationToken: cancellationToken);
-
-        await connection.ExecuteAsync(command);
-    }
 }
