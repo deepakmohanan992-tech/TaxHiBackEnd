@@ -230,7 +230,7 @@ public sealed partial class BookingService(
         if (string.Equals(reason, "Other", StringComparison.OrdinalIgnoreCase))
         {
             // "Other" needs the customer's own text, which is what gets stored as the reason.
-            var other = request.OtherReason?.Trim();
+            var other = request.Remarks?.Trim();
             if (string.IsNullOrEmpty(other))
                 return ResponseFactory.Failure<CancelBookingResponse>(StatusCodes.Status400BadRequest, "Please describe the reason when selecting Other.", "OTHER_REASON_REQUIRED");
             reason = other.Length > 190 ? other[..190] : other;

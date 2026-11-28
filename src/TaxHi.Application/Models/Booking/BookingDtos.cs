@@ -19,8 +19,8 @@ public sealed class SaveBookingPaymentRequest
 
     // Trip
     public string TripType { get; init; } = string.Empty;
-    public int FromCityId { get; init; }
-    public int ToCityId { get; init; }
+    public int? FromCityId { get; init; }
+    public int? ToCityId { get; init; }
     public string? Route { get; init; }
     public DateTime PickupDateTime { get; init; }
     public DateTime? ReturnDateTime { get; init; }
@@ -231,7 +231,6 @@ public sealed class CancelBookingRequest
     public string BookingNo { get; init; }
     public string Reason { get; init; } = string.Empty;
     /// <summary>Required when <see cref="Reason"/> is "Other": the customer's own words.</summary>
-    public string? OtherReason { get; init; }
     public string? Remarks { get; init; }
     /// <summary>6-digit OTP sent by SendCancellationOtp. Mandatory: no booking is cancelled without it.</summary>
     public string Otp { get; init; } = string.Empty;
